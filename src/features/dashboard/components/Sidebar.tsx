@@ -1,3 +1,6 @@
+// src/features/dashboard/components/Sidebar.tsx
+// MODIFIED: bottom user card now navigates to /profile on click
+
 import React from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -31,7 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
   // A tutor is in "learn mode" when on any /dashboard/learn/* route.
   const isLearningMode = location.pathname.startsWith('/dashboard/learn');
 
-  // ── Nav item definitions ─────────────────────────────────────────────────
+  // ── Nav item definitions ──────────────────────────────────────────────────
   // Tutor dashboard nav — tutor-only pages
   const tutorNavItems = [
     { path: '/dashboard/overview',      icon: LayoutDashboard, label: 'Overview' },
@@ -69,7 +72,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
       'Create your tutor profile and switch to the tutor dashboard?',
     );
     if (!confirmed) return;
-
     await userApi.becomeTutor({ confirm: true });
     await refreshUser();
     navigate('/dashboard/overview', { replace: true });
@@ -79,6 +81,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
   const handleLogout = () => {
     logout();
     navigate('/login', { replace: true });
+    onClose();
+  };
+
+  const handleProfileClick = () => {
+    navigate('/profile');
     onClose();
   };
 
@@ -94,9 +101,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
     return location.pathname.startsWith(path);
   };
 
+  const isProfileActive = location.pathname === '/profile';
+
   return (
     <div className="flex flex-col h-full">
-      {/* ── Header ────────────────────────────────────────────────────────── */}
+      {/* ── Header ── */}
       <div className="p-6 border-b border-gray-100 flex items-center justify-between">
         <NavLink to="/" className="flex items-center gap-3 group">
           <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
@@ -115,7 +124,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
         </button>
       </div>
 
-      {/* ── Navigation ────────────────────────────────────────────────────── */}
+      {/* ── Navigation ── */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4 px-4">
           Menu
@@ -180,17 +189,36 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
         )}
       </nav>
 
-      {/* ── User section ─────────────────────────────────────────────────── */}
+      {/* ── User section ── */}
       <div className="p-4 border-t border-gray-100">
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 mb-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-400 flex items-center justify-center text-white font-bold">
+        {/* Clickable profile card — navigates to /profile */}
+        <button
+          type="button"
+          onClick={handleProfileClick}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl mb-3 transition-all group ${
+            isProfileActive
+              ? 'bg-gradient-to-r from-indigo-50 to-purple-50 shadow-sm'
+              : 'bg-gray-50 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50'
+          }`}
+        >
+          <div className={`w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-400 flex items-center justify-center text-white font-bold ring-2 ring-transparent ${
+            isProfileActive ? 'ring-indigo-200' : 'group-hover:ring-indigo-200'
+          } transition-all`}>
             {initial}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900 truncate">{displayName}</p>
+          <div className="flex-1 min-w-0 text-left">
+            <p className={`text-sm font-semibold truncate transition-colors ${
+              isProfileActive ? 'text-indigo-700' : 'text-gray-900 group-hover:text-indigo-700'
+            }`}>
+              {displayName}
+            </p>
             <p className="text-xs text-gray-500 truncate">{user?.email}</p>
           </div>
-        </div>
+          <User className={`w-4 h-4 flex-shrink-0 transition-colors ${
+            isProfileActive ? 'text-indigo-500' : 'text-gray-300 group-hover:text-indigo-400'
+          }`} />
+        </button>
+
         <button
           type="button"
           onClick={handleLogout}

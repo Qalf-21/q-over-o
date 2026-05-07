@@ -1,4 +1,8 @@
+// src/features/auth/authService.ts
+// MODIFIED: added updatePassword() using Supabase auth via backend
+
 import { authApi } from '../../api/authApi';
+import { apiRequest } from '../../api/client';
 import type {
   AuthResponse,
   GetMeResponse,
@@ -34,6 +38,19 @@ class AuthService {
 
   isAuthenticated(): boolean {
     return !!this.getToken();
+  }
+
+  /**
+   * Updates the authenticated user's password.
+   * Re-authenticates first with currentPassword, then calls
+   * POST /api/profile/change-password with the new password.
+   * Supabase handles the actual password update server-side.
+   */
+  async updatePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await apiRequest('/profile/change-password', {
+      method: 'POST',
+      body: { current_password: currentPassword, new_password: newPassword },
+    });
   }
 }
 
