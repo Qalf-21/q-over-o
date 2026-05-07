@@ -15,36 +15,32 @@ import { Mail, Lock, ArrowRight } from 'lucide-react';
 export const LoginForm: React.FC = () => {
   const navigate = useNavigate();
   const { login, error, clearError, isLoading } = useAuth();
-  
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  });
-  
+
+  const [formData, setFormData] = useState({ email: '', password: '' });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const validate = (): boolean => {
     const errors: Record<string, string> = {};
-    
+
     if (!formData.email.trim()) {
       errors.email = 'Email is required';
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       errors.email = 'Please enter a valid email';
     }
-    
+
     if (!formData.password) {
       errors.password = 'Password is required';
     }
-    
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
     if (validationErrors[name]) {
-      setValidationErrors(prev => ({ ...prev, [name]: '' }));
+      setValidationErrors((prev) => ({ ...prev, [name]: '' }));
     }
     if (error) clearError();
   };
@@ -52,21 +48,26 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    
+
     try {
       await login(formData.email, formData.password);
+      // After login the stored user is up-to-date. The dashboard index
+      // (/dashboard) performs a role-aware redirect itself, so we always
+      // navigate there and let it decide.
       const user = authApi.getStoredUser();
-      navigate(user?.role === 'tutor' ? '/dashboard' : '/dashboard/discover', { replace: true });
-    } catch (err) {
-      // Error handled by context
+      navigate(user?.role === 'tutor' ? '/dashboard/overview' : '/dashboard/discover', {
+        replace: true,
+      });
+    } catch {
+      // Error state is managed by AuthContext
     }
   };
 
   return (
-    <AuthLayout 
+    <AuthLayout
       title="Welcome back"
       subtitle="Sign in to your Q-over-o account"
-      showBackButton={true}
+      showBackButton
       backTo="/"
     >
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -75,7 +76,7 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
             {error}
           </div>
         )}
-        
+
         <InputField
           id="email"
           name="email"
@@ -106,10 +107,19 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
             autoComplete="current-password"
             disabled={isLoading}
           />
+          {/* Forgot password link — was missing from original */}
+          <div className="text-right">
+            <Link
+              to="/forgot-password"
+              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
+            >
+              Forgot password?
+            </Link>
+          </div>
         </div>
 
-        <AuthButton 
-          type="submit" 
+        <AuthButton
+          type="submit"
           isLoading={isLoading}
           disabled={isLoading}
           icon={<ArrowRight className="w-5 h-5" />}
@@ -121,8 +131,8 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
       <div className="mt-8 pt-6 border-t border-gray-100 text-center">
         <p className="text-gray-600">
           Don't have an account?{' '}
-          <Link 
-            to="/register" 
+          <Link
+            to="/register"
             className="font-semibold text-indigo-600 hover:text-indigo-700 transition-colors"
           >
             Create one free
