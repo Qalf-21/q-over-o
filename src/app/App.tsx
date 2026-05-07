@@ -1,6 +1,5 @@
 // src/app/App.tsx
-// MODIFIED: added /profile route wrapped in ProtectedRoute + DashboardLayout
-
+// MODIFIED: TutorOnly guard redirects to tutee index; /profile unguarded inside dashboard shell
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../features/auth/AuthContext';
@@ -20,16 +19,21 @@ import { MySessions } from '../features/tutee/pages/MySessions';
 import { History } from '../features/tutee/pages/History';
 import { UserProfilePage } from '../features/profile/pages/UserProfilePage';
 
-// Role-aware redirect for the dashboard index
-// Tutors land on /dashboard (Overview).
-// Tutees land on /dashboard/discover.
+// ── Role-aware redirect for the dashboard index ──────────────────────────────
+// Tutors  → /dashboard/overview
+// Tutees  → /dashboard/discover
 const DashboardIndex: React.FC = () => {
   const { user } = useAuth();
-  const isTutor = user?.role === 'tutor';
-  return <Navigate to={isTutor ? '/dashboard/overview' : '/dashboard/discover'} replace />;
+  return (
+    <Navigate
+      to={user?.role === 'tutor' ? '/dashboard/overview' : '/dashboard/discover'}
+      replace
+    />
+  );
 };
 
-// Tutor-only guard
+// ── Tutor-only guard ─────────────────────────────────────────────────────────
+// Non-tutors are redirected to the tutee discover page instead of a dead end.
 const TutorOnly: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   if (user?.role !== 'tutor') {
@@ -38,7 +42,7 @@ const TutorOnly: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <>{children}</>;
 };
 
-// Dashboard shell
+// ── Dashboard shell ──────────────────────────────────────────────────────────
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   return (
@@ -48,35 +52,19 @@ const Dashboard: React.FC = () => {
         <Route path="/" element={<DashboardIndex />} />
 
         {/* ── Tutor-only routes ── */}
-        <Route
-          path="/overview"
-          element={<TutorOnly><Overview /></TutorOnly>}
-        />
-        <Route
-          path="/sessions"
-          element={<TutorOnly><Sessions /></TutorOnly>}
-        />
-        <Route
-          path="/availability"
-          element={<TutorOnly><Availability /></TutorOnly>}
-        />
-        <Route
-          path="/earnings"
-          element={<TutorOnly><Earnings /></TutorOnly>}
-        />
-        <Route
-          path="/profile"
-          element={<TutorOnly><Profile /></TutorOnly>}
-        />
+        <Route path="/overview"     element={<TutorOnly><Overview /></TutorOnly>} />
+        <Route path="/sessions"     element={<TutorOnly><Sessions /></TutorOnly>} />
+        <Route path="/availability" element={<TutorOnly><Availability /></TutorOnly>} />
+        <Route path="/earnings"     element={<TutorOnly><Earnings /></TutorOnly>} />
+        <Route path="/profile"      element={<TutorOnly><Profile /></TutorOnly>} />
 
         {/* ── Learner routes — accessible to BOTH tutors and tutees ── */}
-        {/* Tutors reach these via /dashboard/learn/* (sidebar "Learn" tab). */}
-        {/* Tutees reach them via /dashboard/* directly.                     */}
-        <Route path="/discover"          element={<Discover />} />
-        <Route path="/my-sessions"       element={<MySessions />} />
-        <Route path="/history"           element={<History />} />
+        {/* Tutees reach these via /dashboard/*                         */}
+        <Route path="/discover"    element={<Discover />} />
+        <Route path="/my-sessions" element={<MySessions />} />
+        <Route path="/history"     element={<History />} />
 
-        {/* Tutor learner aliases — keep sidebar links working for tutors */}
+        {/* Tutor learner aliases — keep sidebar "Learn" links working */}
         <Route path="/learn/discover"  element={<Discover />} />
         <Route path="/learn/sessions"  element={<MySessions />} />
         <Route path="/learn/history"   element={<History />} />
@@ -88,29 +76,19 @@ const Dashboard: React.FC = () => {
   );
 };
 
-// Root app
+// ── Root app ─────────────────────────────────────────────────────────────────
 const App: React.FC = () => {
   return (
     <AuthProvider>
       <Router>
         <Routes>
           {/* ── Public routes ── */}
-          <Route path="/"               element={<LandingPage />} />
-          <Route path="/login"          element={<Login />} />
-          <Route path="/register"       element={<Register />} />
+          <Route path="/"                element={<LandingPage />} />
+          <Route path="/login"           element={<Login />} />
+          <Route path="/register"        element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
 
-          {/* ── /profile — uses DashboardLayout so sidebar/topnav stay ── */}
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
-                <ProfileShell />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* ── Protected dashboard (any authenticated user) ── */}
+          {/* ── Protected dashboard ── */}
           <Route
             path="/dashboard/*"
             element={
@@ -120,22 +98,23 @@ const App: React.FC = () => {
             }
           />
 
-          {/* ── Global 404 fallback ── */}
+          {/* ── Protected user profile page ── */}
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout user={null}>
+                  <UserProfilePage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Catch-all — redirect to home */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
     </AuthProvider>
-  );
-};
-
-// Renders the shared profile page inside DashboardLayout so the sidebar
-// and topnav are visible (consistent with the rest of the dashboard).
-const ProfileShell: React.FC = () => {
-  const { user } = useAuth();
-  return (
-    <DashboardLayout user={user}>
-      <UserProfilePage />
-    </DashboardLayout>
   );
 };
 

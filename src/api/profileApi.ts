@@ -1,5 +1,4 @@
 // src/api/profileApi.ts
-
 import { apiRequest } from './client';
 import type { ApiResponse } from './client';
 
@@ -21,8 +20,8 @@ export interface ProfileData {
     hourly_rate_tokens: number;
     rating_avg: number;
     total_reviews: number;
-    total_sessions: number;
-    is_available: boolean;
+    is_verified: boolean;
+    // total_sessions removed — column does not exist in tutor_profiles table
   } | null;
 }
 
