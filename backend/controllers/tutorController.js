@@ -176,6 +176,21 @@ exports.getTutorAvailability = asyncHandler(async (req, res) => {
   });
 });
 
+// ADD this export to backend/controllers/tutorController.js
+// Place it directly after exports.getTutorAvailability
+
+exports.getMyAvailability = asyncHandler(async (req, res) => {
+  const tutorId = req.user.id;
+  const { data: slots, error } = await supabase
+    .from('availability_slots')
+    .select('*')
+    .eq('tutor_id', tutorId)
+    .eq('is_available', true)
+    .order('start_time', { ascending: true });
+  if (error) throw new AppError('Failed to fetch availability', 500);
+  res.json({ success: true, data: slots || [] });
+});
+
 exports.createAvailability = asyncHandler(async (req, res) => {
   const tutorId = req.user.id;
   const { startTime, endTime, start_time, end_time } = req.body;

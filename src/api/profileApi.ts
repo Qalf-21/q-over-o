@@ -21,7 +21,9 @@ export interface ProfileData {
     rating_avg: number;
     total_reviews: number;
     is_verified: boolean;
-    // total_sessions removed — column does not exist in tutor_profiles table
+    /** Sourced from a joined aggregate, not the tutor_profiles column */
+    total_sessions?: number;
+    is_available?: boolean;
   } | null;
 }
 

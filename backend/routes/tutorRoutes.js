@@ -8,6 +8,7 @@ const {
   getTutorById,
   getTutorReviews,
   getTutorAvailability,
+    getMyAvailability, 
   getMyProfile,
   updateProfile,
   createAvailability,
@@ -37,6 +38,7 @@ router.post('/become', becomeTutor);
 
 router.get('/profile/me',         requireTutor, getMyProfile);
 router.put('/profile',            requireTutor, updateProfile);
+router.get('/availability',        requireTutor, getMyAvailability); 
 router.post('/availability',      requireTutor, createAvailability);
 router.delete('/availability/:slotId', requireTutor, deleteAvailability);
 router.delete('/application',     revertTutorApplication);

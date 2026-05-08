@@ -7,6 +7,7 @@ const normalizeSubject = (subject: any): Subject => ({
   category: subject.category || subject.code || 'General',
   level: subject.level || 'intermediate'
 });
+
 const personName = (value: any) =>
   value.name || [value.firstName || value.first_name, value.lastName || value.last_name].filter(Boolean).join(' ');
 
@@ -32,7 +33,6 @@ export const tutorApi = {
     if (filters.minRating) params.set('minRating', String(filters.minRating));
     if (filters.maxPrice) params.set('maxPrice', String(filters.maxPrice));
     if (filters.availableNow) params.set('availableNow', 'true');
-
     const path = params.toString() ? `/tutors?${params}` : '/tutors';
     const response = await apiRequest<any[]>(path, { method: 'GET' });
     return {
@@ -60,10 +60,14 @@ export const tutorApi = {
     });
   },
 
-  async createAvailability(startTime: string, endTime: string) {
+  async getMyAvailability() {
+    return apiRequest<any[]>('/tutors/availability', { method: 'GET' });
+  },
+
+  async createAvailability(slot: { dayOfWeek: number; startTime: string; endTime: string }) {
     return apiRequest('/tutors/availability', {
       method: 'POST',
-      body: { startTime, endTime }
+      body: slot
     });
   },
 
@@ -73,6 +77,13 @@ export const tutorApi = {
 
   async deleteAvailability(slotId: string) {
     return apiRequest(`/tutors/availability/${slotId}`, { method: 'DELETE' });
+  },
+
+  async toggleAvailability(isAvailable: boolean) {
+    return apiRequest('/tutors/availability/toggle', {
+      method: 'PATCH',
+      body: { isAvailable }
+    });
   },
 
   async revertApplication() {
