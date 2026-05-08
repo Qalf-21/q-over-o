@@ -286,6 +286,27 @@ exports.deleteAvailability = asyncHandler(async (req, res) => {
   });
 });
 
+exports.toggleAvailability = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const { isAvailable } = req.body;
+
+  if (typeof isAvailable !== 'boolean') {
+    throw new AppError('isAvailable must be a boolean', 400);
+  }
+
+  const { error } = await supabase
+    .from('tutor_profiles')
+    .update({ is_available: isAvailable, updated_at: new Date().toISOString() })
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('[toggleAvailability] Supabase error:', error.message, error.details);
+    throw new AppError('Failed to update availability status', 500);
+  }
+
+  res.json({ success: true, data: { isAvailable } });
+});
+
 exports.getMyProfile = asyncHandler(async (req, res) => {
   const userId = req.user.id;
 

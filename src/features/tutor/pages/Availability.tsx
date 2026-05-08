@@ -1,3 +1,4 @@
+// src/features/tutor/pages/Availability.tsx  — FULL REPLACEMENT
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, Plus, Trash2, Calendar, CheckCircle2, Loader2, AlertCircle, X } from 'lucide-react';
@@ -89,7 +90,12 @@ const AddSlotModal: React.FC<AddSlotModalProps> = ({ onClose, onSave, existingSl
     );
     if (conflict) { setModalError('This time overlaps with an existing slot on that day.'); return; }
     setModalError(null);
-    await onSave({ dayOfWeek, startTime, endTime, date: selectedDate });
+    try {
+      await onSave({ dayOfWeek, startTime, endTime, date: selectedDate });
+    } catch (err: any) {
+      // Surface any API-level rejection back into the modal
+      setModalError(err?.message ?? 'Failed to save the time slot. Please try again.');
+    }
   };
 
   return (
@@ -243,14 +249,18 @@ export const Availability: React.FC = () => {
   const handleToggleAvailability = async () => {
     const next = !isAvailable;
     setIsAvailable(next);
-    try { await tutorApi.toggleAvailability(next); }
-    catch { setIsAvailable(!next); setError('Could not update availability status.'); }
+    setError(null);
+    try {
+      await tutorApi.toggleAvailability(next);
+    } catch {
+      setIsAvailable(!next);
+      setError('Could not update availability status.');
+    }
   };
 
   const handleSaveSlot = async (newSlot: { dayOfWeek: number; startTime: string; endTime: string; date?: string }) => {
     setSaving(true);
     try {
-      // If a specific date was chosen, build ISO from that date; else fall back to next occurrence
       const buildISO = (date: string | undefined, day: number, time: string) => {
         if (date) {
           const [hh, mm] = time.split(':').map(Number);
@@ -266,11 +276,13 @@ export const Availability: React.FC = () => {
       if (res.success && res.data) {
         setSlots(prev => [...prev, normalizeSlot(res.data)]);
       } else {
+        // Optimistic fallback if backend didn't return the slot
         setSlots(prev => [...prev, { id: Date.now().toString(), ...newSlot, isAvailable: true }]);
       }
       setShowModal(false);
-    } catch {
-      throw new Error('Failed to save the time slot. Please try again.');
+    } catch (err: any) {
+      // Re-throw so AddSlotModal can display the message inline
+      throw new Error(err?.response?.data?.message ?? err?.message ?? 'Failed to save the time slot. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -279,14 +291,20 @@ export const Availability: React.FC = () => {
   const handleDeleteSlot = async (id: string) => {
     setDeletingId(id);
     setError(null);
-    try { await tutorApi.deleteAvailability(id); setSlots(prev => prev.filter(s => s.id !== id)); }
-    catch { setError('Failed to remove the time slot. Please try again.'); }
-    finally { setDeletingId(null); }
+    try {
+      await tutorApi.deleteAvailability(id);
+      setSlots(prev => prev.filter(s => s.id !== id));
+    } catch {
+      setError('Failed to remove the time slot. Please try again.');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
-  const groupedSlots = DAYS.map((day, index) => ({
-    day, dayIndex: index, slots: slots.filter(s => s.dayOfWeek === index),
-  }));
+  // ── Only render days that have at least one slot ───────────────────────────
+  const daysWithSlots = DAYS
+    .map((day, index) => ({ day, dayIndex: index, slots: slots.filter(s => s.dayOfWeek === index) }))
+    .filter(({ slots: daySlots }) => daySlots.length > 0);
 
   return (
     <>
@@ -299,7 +317,8 @@ export const Availability: React.FC = () => {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-600">Currently Available</span>
-            <button onClick={handleToggleAvailability}
+            <button
+              onClick={handleToggleAvailability}
               className={`w-12 h-6 rounded-full relative transition-colors ${isAvailable ? 'bg-green-500' : 'bg-gray-300'}`}
               aria-label="Toggle availability"
             >
@@ -317,23 +336,34 @@ export const Availability: React.FC = () => {
         {/* Add slot bar */}
         <div className="bg-white rounded-2xl px-6 py-4 border border-gray-100 shadow-sm flex items-center justify-between">
           <h3 className="font-semibold text-gray-900">Add Time Slot</h3>
-          <button onClick={() => setShowModal(true)}
+          <button
+            onClick={() => setShowModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 active:scale-95 transition-all"
           >
             <Plus className="w-4 h-4" /> Add Slot
           </button>
         </div>
 
-        {/* Weekly schedule */}
+        {/* Weekly schedule — only days with slots are shown */}
         {loading ? (
           <div className="flex items-center justify-center py-16 text-gray-400 gap-3">
             <Loader2 className="w-6 h-6 animate-spin" /><span>Loading your schedule…</span>
           </div>
+        ) : daysWithSlots.length === 0 ? (
+          <div className="bg-white rounded-2xl p-10 border border-gray-100 shadow-sm flex flex-col items-center gap-3 text-center">
+            <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
+              <Calendar className="w-6 h-6 text-indigo-400" />
+            </div>
+            <p className="font-semibold text-gray-700">No availability set yet</p>
+            <p className="text-sm text-gray-400">Click "+ Add Slot" to set your first available time window.</p>
+          </div>
         ) : (
           <div className="space-y-4">
-            {groupedSlots.map(({ day, dayIndex, slots: daySlots }) => (
-              <motion.div key={day}
-                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+            {daysWithSlots.map(({ day, dayIndex, slots: daySlots }) => (
+              <motion.div
+                key={day}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: dayIndex * 0.04 }}
                 className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm"
               >
@@ -342,32 +372,28 @@ export const Availability: React.FC = () => {
                     <Calendar className="w-5 h-5 text-indigo-600" />
                   </div>
                   <h3 className="font-semibold text-gray-900">{day}</h3>
-                  {daySlots.length > 0 && (
-                    <span className="ml-auto text-sm text-green-600 flex items-center gap-1">
-                      <CheckCircle2 className="w-4 h-4" /> Available
-                    </span>
-                  )}
+                  <span className="ml-auto text-sm text-green-600 flex items-center gap-1">
+                    <CheckCircle2 className="w-4 h-4" /> Available
+                  </span>
                 </div>
-                {daySlots.length === 0 ? (
-                  <p className="text-gray-400 text-sm">No availability set</p>
-                ) : (
-                  <div className="flex flex-wrap gap-3">
-                    {daySlots.map(slot => (
-                      <div key={slot.id} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl">
-                        <Clock className="w-4 h-4" />
-                        <span className="font-medium text-sm">{fmt12(slot.startTime)} – {fmt12(slot.endTime)}</span>
-                        <button onClick={() => handleDeleteSlot(slot.id)} disabled={deletingId === slot.id}
-                          className="ml-1 p-1 hover:bg-indigo-100 rounded-lg transition-colors disabled:opacity-50"
-                          aria-label="Remove slot"
-                        >
-                          {deletingId === slot.id
-                            ? <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
-                            : <Trash2 className="w-3.5 h-3.5 text-red-400" />}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div className="flex flex-wrap gap-3">
+                  {daySlots.map(slot => (
+                    <div key={slot.id} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl">
+                      <Clock className="w-4 h-4" />
+                      <span className="font-medium text-sm">{fmt12(slot.startTime)} – {fmt12(slot.endTime)}</span>
+                      <button
+                        onClick={() => handleDeleteSlot(slot.id)}
+                        disabled={deletingId === slot.id}
+                        className="ml-1 p-1 hover:bg-indigo-100 rounded-lg transition-colors disabled:opacity-50"
+                        aria-label="Remove slot"
+                      >
+                        {deletingId === slot.id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+                          : <Trash2 className="w-3.5 h-3.5 text-red-400" />}
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </motion.div>
             ))}
           </div>
