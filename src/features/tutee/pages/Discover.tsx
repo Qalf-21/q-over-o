@@ -1,19 +1,26 @@
+// src/features/tutee/pages/Discover.tsx
+// CHANGE: "View Profile" on TutorCard now opens TutorProfileModal instead of going nowhere
+
 import React, { useEffect, useState } from 'react';
 import { SearchFilters } from '../components/SearchFilters';
 import { TutorCard } from '../components/TutorCard';
 import { BookingModal } from '../components/BookingModal';
+import { TutorProfileModal } from '../../../shared/components/TutorProfileModal';
 import { Loader2, GraduationCap } from 'lucide-react';
 import type { TutorSearchResult, SearchFilters as Filters, BookingRequest } from '../../../types/tutor';
 import { tutorApi } from '../../../api/tutorApi';
 import { walletApi } from '../../../api/walletApi';
+import { useAuth } from '../../../shared/hooks/useAuth';
 
 export const Discover: React.FC = () => {
+  const { user } = useAuth();
   const [filters, setFilters] = useState<Filters>({ query: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tutors, setTutors] = useState<TutorSearchResult[]>([]);
   const [userTokens, setUserTokens] = useState(0);
   const [bookingTutor, setBookingTutor] = useState<TutorSearchResult | null>(null);
+  const [profileTutor, setProfileTutor] = useState<TutorSearchResult | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -24,7 +31,7 @@ export const Discover: React.FC = () => {
         setError(null);
         const [tutorResponse, walletResponse] = await Promise.all([
           tutorApi.getTutors(filters),
-          walletApi.getWallet()
+          walletApi.getWallet(),
         ]);
 
         if (!ignore) {
@@ -41,19 +48,20 @@ export const Discover: React.FC = () => {
     };
 
     loadDiscoverData();
-    return () => {
-      ignore = true;
-    };
+    return () => { ignore = true; };
   }, [filters]);
 
-  const handleClearFilters = () => {
-    setFilters({ query: '' });
-  };
+  const handleClearFilters = () => setFilters({ query: '' });
 
   const handleBooking = async (_booking: BookingRequest) => {
     const walletResponse = await walletApi.getWallet();
     setUserTokens(walletResponse.data.balance);
     setBookingTutor(null);
+  };
+
+  // "Book Session" initiated from profile modal
+  const handleBookFromProfile = (tutor: TutorSearchResult) => {
+    setBookingTutor(tutor);
   };
 
   return (
@@ -75,9 +83,9 @@ export const Discover: React.FC = () => {
       </div>
 
       {/* Search & Filters */}
-      <SearchFilters 
-        filters={filters} 
-        onChange={setFilters} 
+      <SearchFilters
+        filters={filters}
+        onChange={setFilters}
         onClear={handleClearFilters}
       />
 
@@ -87,7 +95,9 @@ export const Discover: React.FC = () => {
           <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
         </div>
       ) : error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
       ) : tutors.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
           <GraduationCap className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -100,14 +110,24 @@ export const Discover: React.FC = () => {
             <TutorCard
               key={tutor.id}
               tutor={tutor}
-              onViewProfile={() => undefined}
+              onViewProfile={setProfileTutor}
               onBook={setBookingTutor}
             />
           ))}
         </div>
       )}
 
-      {/* Modals */}
+      {/* Tutor profile modal */}
+      {profileTutor && (
+        <TutorProfileModal
+          tutorId={profileTutor.id}
+          currentUserId={user?.id}
+          onClose={() => setProfileTutor(null)}
+          onBook={handleBookFromProfile}
+        />
+      )}
+
+      {/* Booking modal */}
       <BookingModal
         tutor={bookingTutor}
         userTokens={userTokens}

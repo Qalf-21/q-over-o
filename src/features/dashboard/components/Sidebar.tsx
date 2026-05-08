@@ -1,11 +1,10 @@
 // src/features/dashboard/components/Sidebar.tsx
-// MODIFIED: profile card and handleProfileClick now navigate to /dashboard/profile
+// CHANGE: removed "Profile" nav item from tutorNavItems (redundant — accessible via avatar)
 
 import React, { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
-  User,
   Calendar,
   Wallet,
   Clock,
@@ -33,20 +32,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
   const initial = user?.firstName?.[0] || 'U';
   const isTutor = user?.role === 'tutor';
 
-  // A tutor is in "learn mode" when on any /dashboard/learn/* route.
   const isLearningMode = location.pathname.startsWith('/dashboard/learn');
 
   // ── Nav item definitions ──────────────────────────────────────────────────
-  // Tutor dashboard nav — tutor-only pages
+  // Profile removed — accessible via the avatar card at the bottom of sidebar
   const tutorNavItems = [
     { path: '/dashboard/overview',     icon: LayoutDashboard, label: 'Overview' },
     { path: '/dashboard/sessions',     icon: Calendar,        label: 'Sessions' },
     { path: '/dashboard/availability', icon: Clock,           label: 'Availability' },
     { path: '/dashboard/earnings',     icon: Wallet,          label: 'Earnings' },
-    { path: '/dashboard/profile',      icon: User,            label: 'Profile' },
   ];
 
-  // Learner nav — shared by tutors (via /learn/*) and tutees (via direct paths)
   const tuteeNavItems = [
     {
       path:  isTutor ? '/dashboard/learn/discover' : '/dashboard/discover',
@@ -65,7 +61,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
     },
   ];
 
-  // Show tutor nav unless we're in learning mode
   const navItems = isTutor && !isLearningMode ? tutorNavItems : tuteeNavItems;
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -88,7 +83,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
   };
 
   // ── Active detection ─────────────────────────────────────────────────────
-  // /dashboard/overview is the tutor index — treat /dashboard exactly as active too.
   const isActive = (path: string): boolean => {
     if (path === '/dashboard/overview') {
       return (

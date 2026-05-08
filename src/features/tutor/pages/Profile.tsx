@@ -1,13 +1,10 @@
 // src/features/tutor/pages/Profile.tsx
 // Route: /dashboard/profile
-// Purpose: PRIVATE settings page for ALL authenticated users (tutees + tutors).
-//
-// Sections:
-//   1. Profile Header      (avatar, name, role badge, join date)
-//   2. Personal Info       (edit first/last name, read-only email)
-//   3. Tutor Settings      (bio, hourly rate, subjects) — visible only if role=tutor
-//   4. Change Password
-//   5. Danger Zone         (delete account)
+// Changes from original:
+//   • "View public profile" now opens TutorProfileModal instead of new tab
+//   • Success feedback uses the shared Toast component (industry-standard)
+//   • SubjectSelector: fixed so it always shows the dropdown (not just on search)
+//   • tutorApi.getSubjects() response normalised correctly
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -19,7 +16,6 @@ import {
   Calendar,
   BookOpen,
   Star,
-  CheckCircle,
   Edit3,
   Lock,
   Trash2,
@@ -30,15 +26,17 @@ import {
   EyeOff,
   Loader2,
   Plus,
-  DollarSign,
   Search,
-  ExternalLink,
+  Eye as EyeIcon,
 } from 'lucide-react';
 import { useAuth } from '../../../shared/hooks/useAuth';
 import { profileApi } from '../../../api/profileApi';
 import type { ProfileData } from '../../../api/profileApi';
 import { tutorApi } from '../../../api/tutorApi';
 import { authService } from '../../auth/authService';
+import { TutorProfileModal } from '../../../shared/components/TutorProfileModal';
+import { Toast } from '../../../shared/components/Toast';
+import type { ToastState } from '../../../shared/components/Toast';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -113,9 +111,13 @@ const SubjectSelector: React.FC<SubjectSelectorProps> = ({ selected, onChange })
       try {
         setIsLoadingSubjects(true);
         const res = await tutorApi.getSubjects();
-        if (res.data) {
-          setAllSubjects((res.data as SubjectOption[]) ?? []);
-        }
+        // Normalise: backend may return { data: [...] } or an array directly
+        const raw: any[] = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res)
+          ? (res as any)
+          : [];
+        setAllSubjects(raw.map((s: any) => ({ id: s.id, name: s.name, code: s.code })));
       } catch {
         // silently fail — subjects list stays empty
       } finally {
@@ -194,7 +196,7 @@ const SubjectSelector: React.FC<SubjectSelectorProps> = ({ selected, onChange })
         </div>
 
         <AnimatePresence>
-          {isOpen && (search.length > 0 || filtered.length > 0) && (
+          {isOpen && (
             <motion.div
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
@@ -207,7 +209,7 @@ const SubjectSelector: React.FC<SubjectSelectorProps> = ({ selected, onChange })
                 </div>
               ) : filtered.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-4">
-                  {search ? 'No subjects match your search' : 'All subjects already selected'}
+                  {search ? 'No subjects match your search' : allSubjects.length === 0 ? 'No subjects available' : 'All subjects already selected'}
                 </p>
               ) : (
                 filtered.map((subject) => (
@@ -313,12 +315,6 @@ const DeleteModal: React.FC<DeleteModalProps> = ({ onConfirm, onCancel, isLoadin
 
 // ─── Tutor Settings types ─────────────────────────────────────────────────────
 
-interface SubjectOption {
-  id: string;
-  name: string;
-  code?: string;
-}
-
 interface TutorSettingsState {
   bio: string;
   hourlyRate: string;
@@ -336,13 +332,15 @@ export const Profile: React.FC = () => {
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // ── Toast state ──────────────────────────────────────────────────────────
+  const [toast, setToast] = useState<ToastState | null>(null);
+
   // ── Personal info edit state ─────────────────────────────────────────────
   const [isEditing, setIsEditing] = useState(false);
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
 
   // ── Tutor settings edit state ────────────────────────────────────────────
   const [isEditingTutor, setIsEditingTutor] = useState(false);
@@ -353,21 +351,29 @@ export const Profile: React.FC = () => {
   });
   const [tutorSettingsError, setTutorSettingsError] = useState<string | null>(null);
   const [isSavingTutor, setIsSavingTutor] = useState(false);
-  const [tutorSaveSuccess, setTutorSaveSuccess] = useState(false);
 
   // ── Password state ───────────────────────────────────────────────────────
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPasswords, setShowPasswords] = useState(false);
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   // ── Delete state ─────────────────────────────────────────────────────────
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // ── Public profile modal ─────────────────────────────────────────────────
+  const [showPublicProfile, setShowPublicProfile] = useState(false);
+
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const isTutor = user?.role === 'tutor';
+  const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
+  const initial = initials(user?.firstName, user?.lastName);
 
   // ── Fetch profile ─────────────────────────────────────────────────────────
   const fetchProfile = useCallback(async () => {
@@ -375,9 +381,7 @@ export const Profile: React.FC = () => {
       setIsLoadingProfile(true);
       setLoadError(null);
       const res = await profileApi.getMe();
-      if (res.data) {
-        setProfile(res.data ?? null);
-      }
+      if (res.data) setProfile(res.data ?? null);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load profile');
     } finally {
@@ -394,7 +398,6 @@ export const Profile: React.FC = () => {
     setEditFirstName(profile?.firstName ?? user?.firstName ?? '');
     setEditLastName(profile?.lastName ?? user?.lastName ?? '');
     setEditError(null);
-    setSaveSuccess(false);
     setIsEditing(true);
   };
 
@@ -428,8 +431,7 @@ export const Profile: React.FC = () => {
       }
       await refreshUser();
       setIsEditing(false);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3500);
+      setToast({ type: 'success', title: 'Profile updated', message: 'Your name was saved successfully.' });
     } catch (err) {
       setEditError(err instanceof Error ? err.message : 'Failed to update profile');
     } finally {
@@ -442,18 +444,17 @@ export const Profile: React.FC = () => {
     setTutorSettings({
       bio: profile?.tutorProfile?.bio ?? '',
       hourlyRate: String(profile?.tutorProfile?.hourly_rate_tokens ?? ''),
-      subjects: [], // loaded separately via SubjectSelector
+      subjects: [],
     });
-    // Fetch current subjects so the selector is pre-populated
+    // Pre-populate subjects from the tutor profile endpoint
     tutorApi.getMyProfile().then((res: any) => {
-      if (res?.data?.subjects) {
+      const raw: any[] = Array.isArray(res?.data?.subjects)
+        ? res.data.subjects
+        : [];
+      if (raw.length) {
         setTutorSettings((prev) => ({
           ...prev,
-          subjects: res.data.subjects.map((s: any) => ({
-            id: s.id,
-            name: s.name,
-            code: s.code,
-          })),
+          subjects: raw.map((s: any) => ({ id: s.id, name: s.name, code: s.code })),
         }));
       }
     }).catch(() => {});
@@ -491,8 +492,7 @@ export const Profile: React.FC = () => {
       });
       await fetchProfile();
       setIsEditingTutor(false);
-      setTutorSaveSuccess(true);
-      setTimeout(() => setTutorSaveSuccess(false), 3500);
+      setToast({ type: 'success', title: 'Tutor settings saved', message: 'Your profile is live and visible to students.' });
     } catch (err) {
       setTutorSettingsError(err instanceof Error ? err.message : 'Failed to save tutor settings');
     } finally {
@@ -503,7 +503,6 @@ export const Profile: React.FC = () => {
   // ── Password handlers ─────────────────────────────────────────────────────
   const handleSavePassword = async () => {
     setPasswordError(null);
-    setPasswordSuccess(false);
 
     if (!currentPassword) {
       setPasswordError('Please enter your current password');
@@ -517,16 +516,23 @@ export const Profile: React.FC = () => {
       setPasswordError('Passwords do not match');
       return;
     }
+    if (newPassword === currentPassword) {
+      setPasswordError('New password must be different from your current one');
+      return;
+    }
 
     try {
       setIsSavingPassword(true);
       await authService.updatePassword(currentPassword, newPassword);
-      setPasswordSuccess(true);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       setIsChangingPassword(false);
-      setTimeout(() => setPasswordSuccess(false), 4000);
+      setToast({
+        type: 'success',
+        title: 'Password updated',
+        message: 'Your account password was changed successfully.',
+      });
     } catch (err) {
       setPasswordError(err instanceof Error ? err.message : 'Failed to update password');
     } finally {
@@ -540,47 +546,53 @@ export const Profile: React.FC = () => {
       setIsDeleting(true);
       await profileApi.deleteAccount();
       logout();
-      navigate('/login', { replace: true, state: { accountDeleted: true } });
+      navigate('/login', { replace: true });
     } catch (err) {
-      setIsDeleting(false);
       setShowDeleteModal(false);
-      alert(err instanceof Error ? err.message : 'Failed to delete account. Please try again.');
+      setToast({ type: 'error', title: 'Delete failed', message: err instanceof Error ? err.message : 'Unable to delete account.' });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
-  // ── Loading / error states ────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+
   if (isLoadingProfile) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-          <p className="text-sm text-gray-500">Loading your profile…</p>
-        </div>
+        <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
       </div>
     );
   }
 
   if (loadError) {
     return (
-      <div className="max-w-2xl mx-auto mt-10 p-6 bg-red-50 border border-red-200 rounded-2xl text-center">
-        <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
-        <p className="text-red-700 font-medium mb-4">{loadError}</p>
-        <button
-          onClick={fetchProfile}
-          className="px-5 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
-        >
-          Retry
-        </button>
+      <div className="max-w-3xl mx-auto p-6">
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+          {loadError}
+          <button onClick={fetchProfile} className="ml-auto text-indigo-600 hover:underline font-medium">
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
 
-  const isTutor = user?.role === 'tutor';
-  const displayName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || 'User';
-  const initial = initials(profile?.firstName, profile?.lastName);
-
   return (
     <>
+      {/* ── Toast ── */}
+      <Toast toast={toast} onClose={() => setToast(null)} />
+
+      {/* ── Public profile modal ── */}
+      {showPublicProfile && user?.id && (
+        <TutorProfileModal
+          tutorId={user.id}
+          currentUserId={user.id}
+          onClose={() => setShowPublicProfile(false)}
+        />
+      )}
+
       <AnimatePresence>
         {showDeleteModal && (
           <DeleteModal
@@ -605,51 +617,16 @@ export const Profile: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {saveSuccess && (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0 }}
-                className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Saved
-              </motion.div>
-            )}
-            {passwordSuccess && (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Password updated
-              </motion.div>
-            )}
-            {tutorSaveSuccess && (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Tutor settings saved
-              </motion.div>
-            )}
-            {/* View public tutor profile link — tutors only */}
-            {isTutor && (
-              <a
-                href={`/tutors/${user?.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 border border-indigo-200 text-indigo-600 text-sm font-medium rounded-xl hover:bg-indigo-50 transition-colors"
-              >
-                <ExternalLink className="w-4 h-4" />
-                View public profile
-              </a>
-            )}
-          </div>
+          {/* View public tutor profile button — tutors only */}
+          {isTutor && (
+            <button
+              onClick={() => setShowPublicProfile(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-indigo-200 text-indigo-600 text-sm font-medium rounded-xl hover:bg-indigo-50 transition-colors"
+            >
+              <EyeIcon className="w-4 h-4" />
+              View public profile
+            </button>
+          )}
         </motion.div>
 
         {/* ── Profile header card ── */}
@@ -765,9 +742,7 @@ export const Profile: React.FC = () => {
             <div className="space-y-4">
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    First Name
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">First Name</label>
                   <input
                     type="text"
                     value={editFirstName}
@@ -778,9 +753,7 @@ export const Profile: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Last Name
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Last Name</label>
                   <input
                     type="text"
                     value={editLastName}
@@ -791,18 +764,6 @@ export const Profile: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1.5">
-                  Email (cannot be changed)
-                </label>
-                <input
-                  type="email"
-                  value={profile?.email ?? ''}
-                  readOnly
-                  className="w-full px-4 py-2.5 border border-gray-100 rounded-xl text-sm text-gray-400 bg-gray-50 cursor-not-allowed"
-                />
-              </div>
-
               {editError && (
                 <p className="text-sm text-red-600 flex items-center gap-1.5">
                   <AlertTriangle className="w-4 h-4" />
@@ -810,28 +771,20 @@ export const Profile: React.FC = () => {
                 </p>
               )}
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex items-center gap-3 pt-2">
                 <button
                   onClick={handleSaveProfile}
                   disabled={isSaving}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-sm"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 disabled:opacity-60 transition-all"
                 >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Saving…
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" /> Save Changes
-                    </>
-                  )}
+                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {isSaving ? 'Saving…' : 'Save Changes'}
                 </button>
                 <button
                   onClick={handleCancelEdit}
                   disabled={isSaving}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
+                  className="px-5 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
                 >
-                  <X className="w-4 h-4" />
                   Cancel
                 </button>
               </div>
@@ -839,7 +792,7 @@ export const Profile: React.FC = () => {
           )}
         </Section>
 
-        {/* ── Tutor Settings (tutors only) ── */}
+        {/* ── Tutor Settings ── */}
         {isTutor && (
           <Section
             title="Tutor Settings"
@@ -852,9 +805,9 @@ export const Profile: React.FC = () => {
                   label="Hourly Rate"
                   value={
                     <span className="flex items-center gap-1.5 font-semibold text-indigo-700">
-                      <DollarSign className="w-4 h-4" />
-                      {profile?.tutorProfile?.hourly_rate_tokens ?? 0}{' '}
-                      <span className="font-normal text-gray-500">tokens / hr</span>
+                      <span className="text-gray-400 font-normal">$</span>
+                      {profile?.tutorProfile?.hourly_rate_tokens ?? '—'}{' '}
+                      <span className="text-gray-400 font-normal text-xs">tokens / hr</span>
                     </span>
                   }
                 />
@@ -862,7 +815,7 @@ export const Profile: React.FC = () => {
                   label="Average Rating"
                   value={
                     <span className="flex items-center gap-1">
-                      <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+                      <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
                       {Number(profile?.tutorProfile?.rating_avg ?? 0).toFixed(1)}
                       <span className="text-gray-400 text-xs ml-1">
                         ({profile?.tutorProfile?.total_reviews ?? 0} reviews)
@@ -874,14 +827,6 @@ export const Profile: React.FC = () => {
                   label="Sessions Taught"
                   value={profile?.tutorProfile?.total_sessions ?? 0}
                 />
-                {profile?.tutorProfile?.bio && (
-                  <div className="py-3 border-b border-gray-50">
-                    <p className="text-sm font-medium text-gray-500 mb-1.5">Bio</p>
-                    <p className="text-sm text-gray-700 leading-relaxed">
-                      {profile.tutorProfile.bio}
-                    </p>
-                  </div>
-                )}
 
                 <div className="mt-5 pt-4 border-t border-gray-50">
                   <button
@@ -897,21 +842,16 @@ export const Profile: React.FC = () => {
               <div className="space-y-5">
                 {/* Bio */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Tutor Bio
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Bio</label>
                   <textarea
                     value={tutorSettings.bio}
                     onChange={(e) =>
                       setTutorSettings((prev) => ({ ...prev, bio: e.target.value }))
                     }
-                    rows={4}
-                    placeholder="Describe your tutoring style, experience, and what students can expect…"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 resize-none"
+                    rows={3}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 resize-none"
+                    placeholder="Tell students about yourself…"
                   />
-                  <p className="text-xs text-gray-400 mt-1">
-                    {tutorSettings.bio.length} characters — shown on your public profile
-                  </p>
                 </div>
 
                 {/* Hourly Rate */}
@@ -919,29 +859,22 @@ export const Profile: React.FC = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
                     Hourly Rate (tokens)
                   </label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={tutorSettings.hourlyRate}
-                      onChange={(e) =>
-                        setTutorSettings((prev) => ({ ...prev, hourlyRate: e.target.value }))
-                      }
-                      className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
-                      placeholder="e.g. 50"
-                    />
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1">
-                    1 token ≈ 1 KES. Set a fair rate to attract more students.
-                  </p>
+                  <input
+                    type="number"
+                    min="1"
+                    value={tutorSettings.hourlyRate}
+                    onChange={(e) =>
+                      setTutorSettings((prev) => ({ ...prev, hourlyRate: e.target.value }))
+                    }
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
+                    placeholder="e.g. 500"
+                  />
                 </div>
 
                 {/* Subjects */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Subjects You Teach
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Subjects
                   </label>
                   <SubjectSelector
                     selected={tutorSettings.subjects}
@@ -958,28 +891,20 @@ export const Profile: React.FC = () => {
                   </p>
                 )}
 
-                <div className="flex gap-3 pt-2">
+                <div className="flex items-center gap-3 pt-2">
                   <button
                     onClick={handleSaveTutorSettings}
                     disabled={isSavingTutor}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-sm"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 disabled:opacity-60 transition-all"
                   >
-                    {isSavingTutor ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" /> Saving…
-                      </>
-                    ) : (
-                      <>
-                        <Save className="w-4 h-4" /> Save Tutor Settings
-                      </>
-                    )}
+                    {isSavingTutor ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    {isSavingTutor ? 'Saving…' : 'Save Settings'}
                   </button>
                   <button
                     onClick={handleCancelEditTutor}
                     disabled={isSavingTutor}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
+                    className="px-5 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
                   >
-                    <X className="w-4 h-4" />
                     Cancel
                   </button>
                 </div>
@@ -994,81 +919,112 @@ export const Profile: React.FC = () => {
           icon={<Lock className="w-4 h-4" />}
           delay={0.2}
         >
+          <p className="text-sm text-gray-500 mb-4">Keep your account secure with a strong password.</p>
+
           {!isChangingPassword ? (
-            <div>
-              <p className="text-sm text-gray-500 mb-4">
-                Keep your account secure with a strong password.
-              </p>
-              <button
-                onClick={() => {
-                  setIsChangingPassword(true);
-                  setPasswordError(null);
-                  setCurrentPassword('');
-                  setNewPassword('');
-                  setConfirmPassword('');
-                }}
-                className="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
-              >
-                <Lock className="w-4 h-4" />
-                Change Password
-              </button>
-            </div>
+            <button
+              onClick={() => setIsChangingPassword(true)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-sm"
+            >
+              <Lock className="w-4 h-4" />
+              Change Password
+            </button>
           ) : (
-            <div className="space-y-4 max-w-sm">
-              {/* Current Password */}
+            <div className="space-y-4">
+              {/* Current password */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Current Password
                 </label>
                 <div className="relative">
                   <input
-                    type={showPasswords ? 'text' : 'password'}
+                    type={showCurrentPw ? 'text' : 'password'}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="w-full px-4 py-2.5 pr-10 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
-                    placeholder="Current password"
+                    className="w-full pr-10 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
+                    placeholder="Enter current password"
                     autoFocus
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPasswords((s) => !s)}
+                    onClick={() => setShowCurrentPw(!showCurrentPw)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
-                    {showPasswords ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
+                    {showCurrentPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
 
-              {/* New Password */}
+              {/* New password */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   New Password
                 </label>
-                <input
-                  type={showPasswords ? 'text' : 'password'}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
-                  placeholder="Min. 8 characters"
-                />
+                <div className="relative">
+                  <input
+                    type={showNewPw ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full pr-10 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
+                    placeholder="At least 8 characters"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPw(!showNewPw)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {/* Strength hint */}
+                {newPassword.length > 0 && (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <div className="flex gap-1 flex-1">
+                      {[1, 2, 3, 4].map((i) => (
+                        <div
+                          key={i}
+                          className={`h-1 flex-1 rounded-full transition-colors ${
+                            newPassword.length >= i * 3
+                              ? newPassword.length >= 12
+                                ? 'bg-emerald-500'
+                                : newPassword.length >= 8
+                                ? 'bg-amber-400'
+                                : 'bg-red-400'
+                              : 'bg-gray-200'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      {newPassword.length >= 12
+                        ? 'Strong'
+                        : newPassword.length >= 8
+                        ? 'Good'
+                        : 'Weak'}
+                    </span>
+                  </div>
+                )}
               </div>
 
-              {/* Confirm Password */}
+              {/* Confirm password */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Confirm New Password
                 </label>
                 <input
-                  type={showPasswords ? 'text' : 'password'}
+                  type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
-                  placeholder="Repeat new password"
+                  className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 ${
+                    confirmPassword && confirmPassword !== newPassword
+                      ? 'border-red-300'
+                      : 'border-gray-200'
+                  }`}
+                  placeholder="Re-enter new password"
                 />
+                {confirmPassword && confirmPassword !== newPassword && (
+                  <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
+                )}
               </div>
 
               {passwordError && (
@@ -1078,31 +1034,30 @@ export const Profile: React.FC = () => {
                 </p>
               )}
 
-              <div className="flex gap-3 pt-1">
+              <div className="flex items-center gap-3 pt-2">
                 <button
                   onClick={handleSavePassword}
                   disabled={isSavingPassword}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-sm"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 disabled:opacity-60 transition-all"
                 >
                   {isSavingPassword ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Saving…
-                    </>
+                    <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    <>
-                      <Save className="w-4 h-4" /> Update Password
-                    </>
+                    <Lock className="w-4 h-4" />
                   )}
+                  {isSavingPassword ? 'Updating…' : 'Update Password'}
                 </button>
                 <button
                   onClick={() => {
                     setIsChangingPassword(false);
+                    setCurrentPassword('');
+                    setNewPassword('');
+                    setConfirmPassword('');
                     setPasswordError(null);
                   }}
                   disabled={isSavingPassword}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
+                  className="px-5 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
                 >
-                  <X className="w-4 h-4" />
                   Cancel
                 </button>
               </div>
@@ -1111,28 +1066,32 @@ export const Profile: React.FC = () => {
         </Section>
 
         {/* ── Danger Zone ── */}
-        <Section
-          title="Danger Zone"
-          icon={<AlertTriangle className="w-4 h-4 text-red-500" />}
-          delay={0.25}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="bg-white rounded-2xl border border-red-100 shadow-sm overflow-hidden"
         >
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 bg-red-50 border border-red-100 rounded-xl">
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-gray-900">Delete Account</p>
-              <p className="text-sm text-gray-500 mt-0.5">
-                Permanently removes your account, wallet, sessions history, and tutor profile. This
-                action is irreversible.
-              </p>
-            </div>
+          <div className="px-6 py-4 border-b border-red-50 flex items-center gap-2">
+            <span className="text-red-500">
+              <AlertTriangle className="w-4 h-4" />
+            </span>
+            <h2 className="text-base font-semibold text-gray-900">Danger Zone</h2>
+          </div>
+          <div className="p-6">
+            <p className="text-sm text-gray-600 mb-4">
+              Once you delete your account, there is no going back. All your data will be
+              permanently removed.
+            </p>
             <button
               onClick={() => setShowDeleteModal(true)}
-              className="flex-shrink-0 inline-flex items-center gap-2 px-5 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 transition-colors shadow-sm"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition-colors"
             >
               <Trash2 className="w-4 h-4" />
               Delete Account
             </button>
           </div>
-        </Section>
+        </motion.div>
       </div>
     </>
   );
