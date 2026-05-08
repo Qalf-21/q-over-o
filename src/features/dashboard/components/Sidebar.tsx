@@ -1,5 +1,6 @@
 // src/features/dashboard/components/Sidebar.tsx
-// MODIFIED: replaced window.confirm with BecomeTutorModal; role-aware switcher preserved
+// MODIFIED: profile card and handleProfileClick now navigate to /dashboard/profile
+
 import React, { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -82,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
   };
 
   const handleProfileClick = () => {
-    navigate('/profile');
+    navigate('/dashboard/profile');
     onClose();
   };
 
@@ -98,7 +99,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
     return location.pathname.startsWith(path);
   };
 
-  const isProfileActive = location.pathname === '/profile';
+  const isProfileActive = location.pathname === '/dashboard/profile';
 
   return (
     <>
@@ -189,7 +190,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
 
         {/* ── User section ── */}
         <div className="p-4 border-t border-gray-100">
-          {/* Clickable profile card — navigates to /profile */}
+          {/* Clickable profile card — navigates to /dashboard/profile */}
           <button
             type="button"
             onClick={handleProfileClick}

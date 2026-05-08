@@ -1,5 +1,5 @@
 // src/features/dashboard/components/TopNavbar.tsx
-// MODIFIED: avatar + display name in top-right now navigate to /profile
+// MODIFIED: avatar + display name in top-right now navigate to /dashboard/profile
 
 import React from 'react';
 import { Bell, Menu } from 'lucide-react';
@@ -27,8 +27,6 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ user, onMenuClick }) => {
           >
             <Menu className="w-6 h-6 text-gray-600" />
           </button>
-
-          
         </div>
 
         <div className="flex items-center gap-4">
@@ -41,11 +39,11 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ user, onMenuClick }) => {
             )}
           </button>
 
-          {/* Clickable profile section — navigates to /profile */}
+          {/* Clickable profile section — navigates to /dashboard/profile */}
           <button
-            onClick={() => navigate('/profile')}
+            onClick={() => navigate('/dashboard/profile')}
             className="hidden sm:flex items-center gap-3 pl-4 border-l border-gray-200 hover:opacity-80 transition-opacity group"
-            aria-label="Go to profile"
+            aria-label="Go to profile settings"
           >
             <div className="text-right">
               <p className="text-sm font-semibold text-gray-900 group-hover:text-indigo-700 transition-colors">

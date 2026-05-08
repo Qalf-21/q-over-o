@@ -1,5 +1,8 @@
 // src/app/App.tsx
-// MODIFIED: TutorOnly guard redirects to tutee index; /profile unguarded inside dashboard shell
+// MODIFIED: /dashboard/profile is the single private settings page for all roles.
+//           /tutors/:id is the new public marketplace tutor page.
+//           The old standalone /profile route is removed.
+
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../features/auth/AuthContext';
@@ -17,7 +20,7 @@ import { Profile } from '../features/tutor/pages/Profile';
 import { Discover } from '../features/tutee/pages/Discover';
 import { MySessions } from '../features/tutee/pages/MySessions';
 import { History } from '../features/tutee/pages/History';
-import { UserProfilePage } from '../features/profile/pages/UserProfilePage';
+import { TutorPublicPage } from '../features/tutor/pages/TutorPublicPage';
 
 // ── Role-aware redirect for the dashboard index ──────────────────────────────
 // Tutors  → /dashboard/overview
@@ -56,7 +59,10 @@ const Dashboard: React.FC = () => {
         <Route path="/sessions"     element={<TutorOnly><Sessions /></TutorOnly>} />
         <Route path="/availability" element={<TutorOnly><Availability /></TutorOnly>} />
         <Route path="/earnings"     element={<TutorOnly><Earnings /></TutorOnly>} />
-        <Route path="/profile"      element={<TutorOnly><Profile /></TutorOnly>} />
+
+        {/* ── Shared private profile/settings page (all authenticated roles) ── */}
+        {/* Profile is NOT TutorOnly — tutees also have a settings page here   */}
+        <Route path="/profile" element={<Profile />} />
 
         {/* ── Learner routes — accessible to BOTH tutors and tutees ── */}
         {/* Tutees reach these via /dashboard/*                         */}
@@ -88,7 +94,10 @@ const App: React.FC = () => {
           <Route path="/register"        element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
 
-          {/* ── Protected dashboard ── */}
+          {/* ── Public marketplace tutor page ── */}
+          <Route path="/tutors/:id" element={<TutorPublicPage />} />
+
+          {/* ── Protected dashboard (all routes, including /dashboard/profile) ── */}
           <Route
             path="/dashboard/*"
             element={
@@ -98,17 +107,8 @@ const App: React.FC = () => {
             }
           />
 
-          {/* ── Protected user profile page ── */}
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout user={null}>
-                  <UserProfilePage />
-                </DashboardLayout>
-              </ProtectedRoute>
-            }
-          />
+          {/* Legacy /profile redirect → /dashboard/profile */}
+          <Route path="/profile" element={<Navigate to="/dashboard/profile" replace />} />
 
           {/* Catch-all — redirect to home */}
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,3 +1,4 @@
+// src/api/tutorApi.ts
 import { apiRequest } from './client';
 import type { SearchFilters, Subject, TutorSearchResult } from '../types/tutor';
 
@@ -58,6 +59,15 @@ export const tutorApi = {
       method: 'PUT',
       body: profile
     });
+  },
+
+  /**
+   * GET /api/tutors/subjects
+   * Returns the full list of subjects from the backend.
+   * Used in the SubjectSelector component on the profile settings page.
+   */
+  async getSubjects() {
+    return apiRequest<any[]>('/tutors/subjects', { method: 'GET' });
   },
 
   async getMyAvailability() {
