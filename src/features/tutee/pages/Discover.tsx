@@ -43,7 +43,12 @@ export const Discover: React.FC = () => {
 
         if (!ignore) {
           if (tutorResult.status === 'fulfilled') {
-            const filtered = tutorResult.value.data.filter(t => t.id !== user?.id);
+            let filtered = tutorResult.value.data.filter(t => t.id !== user?.id);
+            // Client-side safety net: enforce availableNow filter locally
+            // so unavailable tutors never slip through even if backend misfires.
+            if (filters.availableNow) {
+              filtered = filtered.filter(t => t.isAvailable === true);
+            }
             setTutors(filtered);
           } else {
             setError(tutorResult.reason instanceof Error

@@ -92,6 +92,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   onClose,
   onConfirm,
 }) => {
+  // ── ALL hooks first — no early returns before this block ───────────────────
   const [step, setStep] = useState<'select' | 'confirm' | 'success'>('select');
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -99,7 +100,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
   const [duration, setDuration] = useState<number>(60);
-  const [sessionStart, setSessionStart] = useState<string>(''); // ISO chosen start within slot
+  const [sessionStart, setSessionStart] = useState<string>('');
   const [topic, setTopic] = useState('');
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -107,18 +108,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   const overlayRef = useRef<HTMLDivElement>(null);
 
-  // ── Guard: never show for self ──────────────────────────────────────────────
-  if (!tutor) return null;
-  if (currentUserId && currentUserId === tutor.id) return null;
-
-  // ── Load availability on mount ──────────────────────────────────────────────
-  // eslint-disable-next-line react-hooks/rules-of-hooks
+  // Load availability — safe because tutorId is null when tutor is null
   useEffect(() => {
-    if (!tutor) return;
+    const tutorId = tutor?.id;
+    if (!tutorId) return;
     let cancelled = false;
     setLoadingSlots(true);
     setSlotsError(null);
-    tutorApi.getAvailability(tutor.id)
+    setSlots([]);
+    tutorApi.getAvailability(tutorId)
       .then(res => {
         if (cancelled) return;
         const raw: any[] = (res as any)?.data?.slots ?? (res as any)?.data ?? [];
@@ -141,18 +139,20 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     return () => { cancelled = true; };
   }, [tutor?.id]);
 
-  // ── Derived values ──────────────────────────────────────────────────────────
-  const totalCost = Math.round(tutor.hourlyRate * (duration / 60));
-  const hasEnoughTokens = userTokens >= totalCost;
-
-  // When slot changes or duration changes, reset sessionStart
-  // If slot is exactly duration long, there's only one option — auto-select it
-  // eslint-disable-next-line react-hooks/rules-of-hooks
+  // Reset sessionStart when slot or duration changes
   useEffect(() => {
     if (!selectedSlot) { setSessionStart(''); return; }
     const options = buildStartOptions(selectedSlot, duration);
     setSessionStart(options.length === 1 ? options[0] : '');
   }, [selectedSlot?.id, duration]);
+
+  // ── Guards (after ALL hooks) ────────────────────────────────────────────────
+  if (!tutor) return null;
+  if (currentUserId && currentUserId === tutor.id) return null;
+
+  // ── Derived values ──────────────────────────────────────────────────────────
+  const totalCost = Math.round(tutor.hourlyRate * (duration / 60));
+  const hasEnoughTokens = userTokens >= totalCost;
 
   const startOptions = selectedSlot ? buildStartOptions(selectedSlot, duration) : [];
   const needsStartPicker = startOptions.length > 1;
