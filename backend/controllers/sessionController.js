@@ -1,15 +1,102 @@
+// backend/controllers/sessionController.js — FULL REPLACEMENT
+//
+// Changes to bookSession:
+//  • Accepts optional notes and availability_slot_id in the request body
+//  • After the atomic booking RPC succeeds, trims or splits the availability slot:
+//      - If the session covers the entire slot → mark slot is_available = false
+//      - If session starts at slot start but ends before slot end → shrink slot start forward
+//      - If session ends at slot end but starts after slot start → shrink slot end backward
+//      - If session is in the middle of the slot → delete original, insert two new slots
+//  • Self-booking guard: tutee cannot book themselves as tutor
+
 const supabase = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
 
 const displayName = (profile) => [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
 
+// ── Slot trimming helper ───────────────────────────────────────────────────────
+// Called after a successful booking to remove the booked window from the slot.
+// This ensures the slot is no longer shown as available for that time.
+const trimAvailabilitySlot = async (tutorId, slotId, sessionStart, sessionEnd) => {
+  if (!slotId) return; // no slot id provided — skip (graceful degradation)
+
+  const { data: slot, error: fetchErr } = await supabase
+    .from('availability_slots')
+    .select('*')
+    .eq('id', slotId)
+    .eq('tutor_id', tutorId)
+    .single();
+
+  if (fetchErr || !slot) return; // slot not found or already gone — skip
+
+  const slotStart = slot.start_time;
+  const slotEnd   = slot.end_time;
+
+  const sessionStartsAtSlotStart = sessionStart <= slotStart;
+  const sessionEndsAtSlotEnd     = sessionEnd   >= slotEnd;
+
+  if (sessionStartsAtSlotStart && sessionEndsAtSlotEnd) {
+    // Entire slot consumed → soft-delete
+    await supabase
+      .from('availability_slots')
+      .update({ is_available: false, deleted_at: new Date().toISOString() })
+      .eq('id', slotId);
+
+  } else if (sessionStartsAtSlotStart) {
+    // Session at the beginning → push slot start forward
+    await supabase
+      .from('availability_slots')
+      .update({ start_time: sessionEnd })
+      .eq('id', slotId);
+
+  } else if (sessionEndsAtSlotEnd) {
+    // Session at the end → push slot end backward
+    await supabase
+      .from('availability_slots')
+      .update({ end_time: sessionStart })
+      .eq('id', slotId);
+
+  } else {
+    // Session in the middle → split into two slots
+    // Shrink the existing slot to the left portion
+    await supabase
+      .from('availability_slots')
+      .update({ end_time: sessionStart })
+      .eq('id', slotId);
+
+    // Insert the right portion as a new slot
+    await supabase
+      .from('availability_slots')
+      .insert({
+        tutor_id:    tutorId,
+        start_time:  sessionEnd,
+        end_time:    slotEnd,
+        is_available: true,
+      });
+  }
+};
+
+// ── bookSession ────────────────────────────────────────────────────────────────
 exports.bookSession = asyncHandler(async (req, res) => {
-  const { tutor_id, subject_id, start_time, end_time } = req.body;
+  const {
+    tutor_id,
+    subject_id,
+    start_time,
+    end_time,
+    notes,
+    availability_slot_id,
+  } = req.body;
 
   if (!tutor_id || !subject_id || !start_time || !end_time) {
     throw new AppError('tutor_id, subject_id, start_time, and end_time are required', 400);
   }
 
+  // ── Self-booking guard ──────────────────────────────────────────────────────
+  if (req.user.id === tutor_id) {
+    throw new AppError('You cannot book a session with yourself', 400);
+  }
+
+  // ── Review gate ─────────────────────────────────────────────────────────────
   const { data: completedSessions, error: completedError } = await supabase
     .from('sessions')
     .select('id, tutor_id, start_time')
@@ -33,28 +120,44 @@ exports.bookSession = asyncHandler(async (req, res) => {
     const missingReview = completedSessions.find(session => !reviewedSessionIds.has(session.id));
 
     if (missingReview) {
-      throw new AppError('You must review completed tutor sessions before booking another session', 409, 'REVIEW_REQUIRED');
+      throw new AppError(
+        'You must review completed tutor sessions before booking another session',
+        409,
+        'REVIEW_REQUIRED'
+      );
     }
   }
 
+  // ── Atomic booking (escrow + session insert) ─────────────────────────────────
   const { data, error } = await supabase.rpc('book_session_atomic', {
     p_tutee_id: req.user.id,
     p_tutor_id: tutor_id,
     p_subject_id: subject_id,
     p_start: start_time,
-    p_end: end_time
+    p_end: end_time,
   });
 
   if (error) {
     throw new AppError(error.message, 400);
   }
 
+  // ── Trim the availability slot (best-effort, non-blocking) ───────────────────
+  // We do this after the booking succeeds so a slot-trim failure doesn't
+  // roll back a successful booking.
+  try {
+    await trimAvailabilitySlot(tutor_id, availability_slot_id, start_time, end_time);
+  } catch (trimErr) {
+    // Log but don't fail the request
+    console.error('[bookSession] slot trim failed:', trimErr?.message ?? trimErr);
+  }
+
   res.status(201).json({
     success: true,
-    session_id: data
+    session_id: data,
   });
 });
 
+// ── getSessions ────────────────────────────────────────────────────────────────
 exports.getSessions = asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const canTutor = req.user.role === 'tutor' || req.user.is_tutor;
@@ -109,6 +212,7 @@ exports.getSessions = asyncHandler(async (req, res) => {
   });
 });
 
+// ── completeSession ────────────────────────────────────────────────────────────
 exports.completeSession = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
@@ -127,6 +231,7 @@ exports.completeSession = asyncHandler(async (req, res) => {
   });
 });
 
+// ── cancelSession ──────────────────────────────────────────────────────────────
 exports.cancelSession = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
@@ -145,6 +250,7 @@ exports.cancelSession = asyncHandler(async (req, res) => {
   });
 });
 
+// ── undoCancellation ───────────────────────────────────────────────────────────
 exports.undoCancellation = asyncHandler(async (req, res) => {
   const { id } = req.params;
 

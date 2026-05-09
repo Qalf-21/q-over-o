@@ -1,3 +1,9 @@
+// backend/controllers/walletController.js — getBalance PATCHED
+//
+// Change: getBalance now auto-creates a zero-balance wallet if none exists
+// instead of throwing 404. This is a safety net for users who registered
+// before the wallet-creation fix was added to authController.register().
+
 const supabase = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
 const paymentService = require('../services/paymentService');
@@ -5,13 +11,25 @@ const paymentService = require('../services/paymentService');
 exports.getBalance = asyncHandler(async (req, res) => {
   const userId = req.user.id;
 
-  const { data: wallet, error } = await supabase
+  let { data: wallet, error } = await supabase
     .from('wallets')
     .select('*')
     .eq('user_id', userId)
     .single();
 
-  if (error) throw new AppError('Wallet not found', 404);
+  // ── Auto-create wallet if missing (lazy safety net) ─────────────────────────
+  if (error || !wallet) {
+    const { data: created, error: createError } = await supabase
+      .from('wallets')
+      .upsert({ user_id: userId, balance_tokens: 0 }, { onConflict: 'user_id' })
+      .select('*')
+      .single();
+
+    if (createError || !created) {
+      throw new AppError('Wallet not found and could not be created', 500);
+    }
+    wallet = created;
+  }
 
   const { data: transactions, error: transactionError } = await supabase
     .from('transactions')
@@ -55,29 +73,23 @@ exports.purchaseTokens = asyncHandler(async (req, res) => {
     throw new AppError('Amount and phone number are required', 400);
   }
 
-  // Calculate tokens (1 KES = 0.5 tokens for demo)
   const tokensExpected = Math.floor(amountKes * 0.5);
 
-  // Create payment intent
   const paymentIntent = await paymentService.createPaymentIntent(
     userId,
     amountKes,
     tokensExpected
   );
 
-  // Initiate M-Pesa STK Push
   const stkResponse = await paymentService.initiateSTKPush(
     phoneNumber,
     amountKes,
     `QOVERO-${paymentIntent.id}`
   );
 
-  // Update payment intent with checkout request ID
   await supabase
     .from('payment_intents')
-    .update({ 
-      mpesa_reference: stkResponse.checkoutRequestID 
-    })
+    .update({ mpesa_reference: stkResponse.checkoutRequestID })
     .eq('id', paymentIntent.id);
 
   res.json({
@@ -93,16 +105,9 @@ exports.purchaseTokens = asyncHandler(async (req, res) => {
 
 exports.handleMpesaCallback = asyncHandler(async (req, res) => {
   const callbackData = req.body;
-
   console.log('M-Pesa Callback:', JSON.stringify(callbackData, null, 2));
-
   const result = await paymentService.handleCallback(callbackData);
-
-  // Always return success to M-Pesa to prevent retries
-  res.json({
-    ResultCode: 0,
-    ResultDesc: 'Success'
-  });
+  res.json({ ResultCode: 0, ResultDesc: 'Success' });
 });
 
 exports.getSpending = asyncHandler(async (req, res) => {

@@ -1,23 +1,33 @@
-// src/features/tutor/pages/Availability.tsx  — FULL REPLACEMENT
+// src/features/tutor/pages/Availability.tsx — FULL REPLACEMENT
+//
+// Changes from previous version:
+//  • Modal matches other modals (gradient header bar, spring animation, backdrop blur)
+//  • Full 24-hour time selection (00:00 – 23:00 every hour)
+//  • Today is selectable in the date picker (min = today, not tomorrow)
+//  • When today is selected, start times before the current hour are disabled
+//  • Slots are date-specific (not recurring weekly) — expired slots are filtered out client-side
+//  • Modal subtitle updated to reflect non-recurring nature
+//  • Backend already supports ISO datetime slots; no backend changes needed for these UI rules
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, Plus, Trash2, Calendar, CheckCircle2, Loader2, AlertCircle, X } from 'lucide-react';
 import { tutorApi } from '../../../api/tutorApi';
 import type { TimeSlot } from '../tutor';
 
-const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-const TIME_OPTIONS = [
-  '06:00', '07:00', '08:00', '09:00', '10:00', '11:00',
-  '12:00', '13:00', '14:00', '15:00', '16:00', '17:00',
-  '18:00', '19:00', '20:00', '21:00', '22:00',
-];
+
+/** All 24 hours as HH:00 strings */
+const ALL_HOURS: string[] = Array.from({ length: 24 }, (_, i) =>
+  `${String(i).padStart(2, '0')}:00`
+);
 
 const fmt12 = (hhmm: string) => {
-  const [h, m] = hhmm.split(':').map(Number);
+  const [h] = hhmm.split(':').map(Number);
   const suffix = h >= 12 ? 'PM' : 'AM';
   const h12 = h % 12 || 12;
-  return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
+  return `${h12}:00 ${suffix}`;
 };
 
 const toHHMM = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
@@ -34,7 +44,11 @@ const normalizeSlot = (slot: any): TimeSlot => {
       startTime:   toHHMM(start.toISOString()),
       endTime:     toHHMM(end.toISOString()),
       isAvailable: slot.is_available ?? slot.isAvailable ?? true,
-    };
+      // Keep the raw ISO so we can check expiry
+      _startISO:   startRaw,
+      _endISO:     endRaw,
+      _date:       startRaw.slice(0, 10),
+    } as any;
   }
   return {
     id:          slot.id,
@@ -45,138 +59,222 @@ const normalizeSlot = (slot: any): TimeSlot => {
   };
 };
 
-const nextOccurrence = (targetDay: number, time: string): string => {
-  const [hh, mm] = time.split(':').map(Number);
-  const d = new Date();
-  d.setHours(hh, mm, 0, 0);
-  const daysAhead = (targetDay - d.getDay() + 7) % 7 || 7;
-  d.setDate(d.getDate() + daysAhead);
-  return d.toISOString();
+/** Filter out slots whose end time has already passed */
+const filterExpired = (slots: any[]): any[] => {
+  const now = new Date();
+  return slots.filter(s => {
+    const endISO = s._endISO ?? null;
+    if (!endISO) return true; // can't determine — keep it
+    return new Date(endISO) > now;
+  });
 };
+
+/** Today's date as YYYY-MM-DD in local time */
+const todayLocal = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// ── AddSlotModal ─────────────────────────────────────────────────────────────
 
 interface AddSlotModalProps {
   onClose: () => void;
-  onSave: (slot: { dayOfWeek: number; startTime: string; endTime: string; date?: string }) => Promise<void>;
-  existingSlots: TimeSlot[];
+  onSave: (slot: { dayOfWeek: number; startTime: string; endTime: string; date: string }) => Promise<void>;
+  existingSlots: any[];
   saving: boolean;
 }
 
 const AddSlotModal: React.FC<AddSlotModalProps> = ({ onClose, onSave, existingSlots, saving }) => {
   const [selectedDate, setSelectedDate] = useState('');
-  const [startTime, setStart]           = useState('');
-  const [endTime, setEnd]               = useState('');
-  const [modalError, setModalError]     = useState<string | null>(null);
+  const [startTime,    setStart]        = useState('');
+  const [endTime,      setEnd]          = useState('');
+  const [modalError,   setModalError]   = useState<string | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
 
-  // Min date = tomorrow (slots must be in the future per backend)
-  const minDate = (() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
-  })();
+  const today      = todayLocal();
+  const isToday    = selectedDate === today;
+  const currentHour = new Date().getHours(); // e.g. 14 → block 00–13 when today is selected
 
-  const dayOfWeek = selectedDate ? new Date(selectedDate + 'T12:00:00').getDay() : -1;
-  const endOptions = startTime ? TIME_OPTIONS.filter(t => t > startTime) : TIME_OPTIONS;
+  const dayOfWeek  = selectedDate ? new Date(selectedDate + 'T12:00:00').getDay() : -1;
 
   const handleSave = async () => {
-    if (!selectedDate)          { setModalError('Please select a date.'); return; }
-    if (!startTime || !endTime) { setModalError('Please select both a start and end time.'); return; }
-    if (startTime >= endTime)   { setModalError('Start time must be before end time.'); return; }
+    if (!selectedDate)          { setModalError('Please select a date.');                        return; }
+    if (!startTime || !endTime) { setModalError('Please select both a start and end time.');     return; }
+    if (startTime >= endTime)   { setModalError('Start time must be before end time.');          return; }
+
+    // If today + start time already past, reject
+    if (isToday && parseInt(startTime) < currentHour) {
+      setModalError('Start time has already passed for today. Please pick a future hour.');
+      return;
+    }
+
     const conflict = existingSlots.some(
       s => s.dayOfWeek === dayOfWeek &&
+        s._date === selectedDate && // same specific date
         ((startTime >= s.startTime && startTime < s.endTime) ||
-         (endTime > s.startTime && endTime <= s.endTime) ||
-         (startTime <= s.startTime && endTime >= s.endTime))
+         (endTime > s.startTime   && endTime   <= s.endTime) ||
+         (startTime <= s.startTime && endTime  >= s.endTime))
     );
     if (conflict) { setModalError('This time overlaps with an existing slot on that day.'); return; }
+
     setModalError(null);
     try {
       await onSave({ dayOfWeek, startTime, endTime, date: selectedDate });
     } catch (err: any) {
-      // Surface any API-level rejection back into the modal
       setModalError(err?.message ?? 'Failed to save the time slot. Please try again.');
     }
   };
+
+  const formattedDate = selectedDate
+    ? new Date(selectedDate + 'T12:00:00').toLocaleDateString(undefined, {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      })
+    : '';
 
   return (
     <div
       ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
       onClick={e => { if (e.target === overlayRef.current) onClose(); }}
     >
+      {/* Backdrop — matches BecomeTutorModal / WithdrawalModal */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 16 }}
+        key="backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Panel */}
+      <motion.div
+        key="modal"
+        initial={{ opacity: 0, scale: 0.95, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 16 }}
-        transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+        exit={{ opacity: 0, scale: 0.95, y: 12 }}
+        transition={{ type: 'spring', duration: 0.35, bounce: 0.15 }}
+        className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden"
+        onClick={e => e.stopPropagation()}
       >
+        {/* Gradient accent bar — same as other modals */}
+        <div className="h-1.5 w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
+
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          disabled={saving}
+          className="absolute top-4 right-4 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-40"
+          aria-label="Close"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
         {/* Header */}
-        <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-gray-100">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">Add Availability Slot</h2>
-            <p className="text-sm text-gray-500 mt-0.5">Set a recurring weekly window when you're free</p>
+        <div className="px-6 pt-5 pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-200">
+              <Calendar className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Add Availability Slot</h2>
+              <p className="text-sm text-gray-500">Pick a specific date and time window</p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
-        <div className="px-6 py-5 space-y-6">
+        {/* Body */}
+        <div className="px-6 py-5 space-y-5 max-h-[60vh] overflow-y-auto">
+
           {/* Date picker */}
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+            <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
               <Calendar className="w-4 h-4 text-indigo-500" /> Select Date
             </p>
             <input
               type="date"
-              min={minDate}
+              min={today}
               value={selectedDate}
-              onChange={e => setSelectedDate(e.target.value)}
+              onChange={e => {
+                setSelectedDate(e.target.value);
+                setStart('');
+                setEnd('');
+                setModalError(null);
+              }}
               className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-gray-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
             />
             {selectedDate && (
-              <p className="mt-2 text-xs text-indigo-600 font-medium">
-                {new Date(selectedDate + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-              </p>
+              <p className="mt-1.5 text-xs text-indigo-600 font-medium">{formattedDate}</p>
             )}
           </div>
 
           {/* Start time */}
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+            <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
               <Clock className="w-4 h-4 text-indigo-500" /> Start Time
+              {isToday && (
+                <span className="text-xs text-gray-400 font-normal">(past hours disabled)</span>
+              )}
             </p>
-            <div className="grid grid-cols-3 gap-2 max-h-36 overflow-y-auto pr-1">
-              {TIME_OPTIONS.filter(t => !endTime || t < endTime).map(t => (
-                <button key={t} onClick={() => { setStart(t); if (endTime && endTime <= t) setEnd(''); }}
-                  className={`py-2 rounded-xl text-sm font-medium transition-all ${
-                    startTime === t ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-50 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
-                  }`}
-                >
-                  {fmt12(t)}
-                </button>
-              ))}
+            <div className="grid grid-cols-4 gap-1.5 max-h-40 overflow-y-auto pr-1">
+              {ALL_HOURS.map(t => {
+                const disabled = (isToday && parseInt(t) < currentHour) || (endTime !== '' && t >= endTime);
+                return (
+                  <button
+                    key={t}
+                    onClick={() => {
+                      if (disabled) return;
+                      setStart(t);
+                      if (endTime && endTime <= t) setEnd('');
+                      setModalError(null);
+                    }}
+                    disabled={disabled}
+                    className={`py-2 rounded-xl text-xs font-medium transition-all ${
+                      startTime === t
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : disabled
+                        ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                        : 'bg-gray-50 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
+                    }`}
+                  >
+                    {fmt12(t)}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           {/* End time */}
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+            <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
               <Clock className="w-4 h-4 text-indigo-500" /> End Time
               {!startTime && <span className="text-xs text-gray-400 font-normal">(pick a start first)</span>}
             </p>
-            <div className="grid grid-cols-3 gap-2 max-h-36 overflow-y-auto pr-1">
-              {endOptions.map(t => (
-                <button key={t} onClick={() => setEnd(t)} disabled={!startTime}
-                  className={`py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-                    endTime === t ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-50 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
-                  }`}
-                >
-                  {fmt12(t)}
-                </button>
-              ))}
+            <div className="grid grid-cols-4 gap-1.5 max-h-40 overflow-y-auto pr-1">
+              {ALL_HOURS.map(t => {
+                const disabled = !startTime || t <= startTime;
+                return (
+                  <button
+                    key={t}
+                    onClick={() => {
+                      if (disabled) return;
+                      setEnd(t);
+                      setModalError(null);
+                    }}
+                    disabled={disabled}
+                    className={`py-2 rounded-xl text-xs font-medium transition-all ${
+                      endTime === t
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : disabled
+                        ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                        : 'bg-gray-50 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
+                    }`}
+                  >
+                    {fmt12(t)}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -184,9 +282,13 @@ const AddSlotModal: React.FC<AddSlotModalProps> = ({ onClose, onSave, existingSl
           {selectedDate && startTime && endTime && (
             <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-4 py-3 flex items-center justify-between">
               <span className="text-sm text-indigo-700 font-medium">
-                {new Date(selectedDate + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                {new Date(selectedDate + 'T12:00:00').toLocaleDateString(undefined, {
+                  weekday: 'short', month: 'short', day: 'numeric',
+                })}
               </span>
-              <span className="text-sm font-bold text-indigo-900">{fmt12(startTime)} – {fmt12(endTime)}</span>
+              <span className="text-sm font-bold text-indigo-900">
+                {fmt12(startTime)} – {fmt12(endTime)}
+              </span>
             </div>
           )}
 
@@ -199,9 +301,11 @@ const AddSlotModal: React.FC<AddSlotModalProps> = ({ onClose, onSave, existingSl
         </div>
 
         {/* Footer */}
-        <div className="px-6 pb-6">
-          <button onClick={handleSave} disabled={saving || !selectedDate || !startTime || !endTime}
-            className="w-full py-3 rounded-xl font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+        <div className="px-6 pb-6 pt-2">
+          <button
+            onClick={handleSave}
+            disabled={saving || !selectedDate || !startTime || !endTime}
+            className="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-md shadow-indigo-200"
           >
             {saving && <Loader2 className="w-4 h-4 animate-spin" />}
             {saving ? 'Saving…' : 'Save Slot'}
@@ -212,14 +316,16 @@ const AddSlotModal: React.FC<AddSlotModalProps> = ({ onClose, onSave, existingSl
   );
 };
 
+// ── Availability page ─────────────────────────────────────────────────────────
+
 export const Availability: React.FC = () => {
-  const [slots, setSlots]               = useState<TimeSlot[]>([]);
-  const [isAvailable, setIsAvailable]   = useState(true);
-  const [showModal, setShowModal]       = useState(false);
-  const [loading, setLoading]           = useState(true);
-  const [saving, setSaving]             = useState(false);
-  const [deletingId, setDeletingId]     = useState<string | null>(null);
-  const [error, setError]               = useState<string | null>(null);
+  const [slots,       setSlots]       = useState<any[]>([]);
+  const [isAvailable, setIsAvailable] = useState(true);
+  const [showModal,   setShowModal]   = useState(false);
+  const [loading,     setLoading]     = useState(true);
+  const [saving,      setSaving]      = useState(false);
+  const [deletingId,  setDeletingId]  = useState<string | null>(null);
+  const [error,       setError]       = useState<string | null>(null);
 
   const fetchAvailability = useCallback(async () => {
     setLoading(true);
@@ -237,7 +343,11 @@ export const Availability: React.FC = () => {
     }
     if (slotsResult.status === 'fulfilled') {
       const res = slotsResult.value;
-      if (res.success) setSlots((res.data as any[] ?? []).map(normalizeSlot));
+      if (res.success) {
+        const normalized = (res.data as any[] ?? []).map(normalizeSlot);
+        // Remove slots whose end time has already passed
+        setSlots(filterExpired(normalized));
+      }
     } else {
       setError('Could not load your saved time slots. You can still add new ones.');
     }
@@ -245,6 +355,14 @@ export const Availability: React.FC = () => {
   }, []);
 
   useEffect(() => { fetchAvailability(); }, [fetchAvailability]);
+
+  // Periodically clean up expired slots from local state (every minute)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSlots(prev => filterExpired(prev));
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleToggleAvailability = async () => {
     const next = !isAvailable;
@@ -258,31 +376,51 @@ export const Availability: React.FC = () => {
     }
   };
 
-  const handleSaveSlot = async (newSlot: { dayOfWeek: number; startTime: string; endTime: string; date?: string }) => {
+  const handleSaveSlot = async (newSlot: {
+    dayOfWeek: number;
+    startTime: string;
+    endTime: string;
+    date: string;
+  }) => {
     setSaving(true);
     try {
-      const buildISO = (date: string | undefined, day: number, time: string) => {
-        if (date) {
-          const [hh, mm] = time.split(':').map(Number);
-          const d = new Date(date + 'T00:00:00');
-          d.setHours(hh, mm, 0, 0);
-          return d.toISOString();
-        }
-        return nextOccurrence(day, time);
+      // Build precise ISO datetimes from the chosen date + hour
+      const buildISO = (date: string, time: string) => {
+        const [hh, mm] = time.split(':').map(Number);
+        const d = new Date(date + 'T00:00:00');
+        d.setHours(hh, mm, 0, 0);
+        return d.toISOString();
       };
-      const startISO = buildISO(newSlot.date, newSlot.dayOfWeek, newSlot.startTime);
-      const endISO   = buildISO(newSlot.date, newSlot.dayOfWeek, newSlot.endTime);
-      const res = await tutorApi.createAvailability({ dayOfWeek: newSlot.dayOfWeek, startTime: startISO, endTime: endISO });
+      const startISO = buildISO(newSlot.date, newSlot.startTime);
+      const endISO   = buildISO(newSlot.date, newSlot.endTime);
+
+      const res = await tutorApi.createAvailability({
+        dayOfWeek: newSlot.dayOfWeek,
+        startTime: startISO,
+        endTime:   endISO,
+      });
+
       if (res.success && res.data) {
-        setSlots(prev => [...prev, normalizeSlot(res.data)]);
+        const normalized = normalizeSlot(res.data);
+        setSlots(prev => filterExpired([...prev, normalized]));
       } else {
-        // Optimistic fallback if backend didn't return the slot
-        setSlots(prev => [...prev, { id: Date.now().toString(), ...newSlot, isAvailable: true }]);
+        // Optimistic fallback
+        const fallback: any = {
+          id:        Date.now().toString(),
+          dayOfWeek: newSlot.dayOfWeek,
+          startTime: newSlot.startTime,
+          endTime:   newSlot.endTime,
+          isAvailable: true,
+          _date:     newSlot.date,
+          _endISO:   buildISO(newSlot.date, newSlot.endTime),
+        };
+        setSlots(prev => filterExpired([...prev, fallback]));
       }
       setShowModal(false);
     } catch (err: any) {
-      // Re-throw so AddSlotModal can display the message inline
-      throw new Error(err?.response?.data?.message ?? err?.message ?? 'Failed to save the time slot. Please try again.');
+      throw new Error(
+        err?.response?.data?.message ?? err?.message ?? 'Failed to save the time slot. Please try again.'
+      );
     } finally {
       setSaving(false);
     }
@@ -301,15 +439,29 @@ export const Availability: React.FC = () => {
     }
   };
 
-  // ── Only render days that have at least one slot ───────────────────────────
-  const daysWithSlots = DAYS
-    .map((day, index) => ({ day, dayIndex: index, slots: slots.filter(s => s.dayOfWeek === index) }))
-    .filter(({ slots: daySlots }) => daySlots.length > 0);
+  // Group by actual date (YYYY-MM-DD) rather than day-of-week,
+  // sorted chronologically so today's slots appear first
+  const slotsByDate = slots.reduce<Record<string, any[]>>((acc, s) => {
+    const key = s._date ?? 'unknown';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(s);
+    return acc;
+  }, {});
+
+  const sortedDates = Object.keys(slotsByDate).sort();
+
+  const formatDateHeading = (dateStr: string) => {
+    if (dateStr === 'unknown') return 'Scheduled';
+    const d = new Date(dateStr + 'T12:00:00');
+    const today = todayLocal();
+    if (dateStr === today) return `Today — ${d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}`;
+    return d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  };
 
   return (
     <>
       <div className="space-y-6">
-        {/* Header */}
+        {/* Page header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Availability</h1>
@@ -344,43 +496,45 @@ export const Availability: React.FC = () => {
           </button>
         </div>
 
-        {/* Weekly schedule — only days with slots are shown */}
+        {/* Slot list grouped by date */}
         {loading ? (
           <div className="flex items-center justify-center py-16 text-gray-400 gap-3">
             <Loader2 className="w-6 h-6 animate-spin" /><span>Loading your schedule…</span>
           </div>
-        ) : daysWithSlots.length === 0 ? (
+        ) : sortedDates.length === 0 ? (
           <div className="bg-white rounded-2xl p-10 border border-gray-100 shadow-sm flex flex-col items-center gap-3 text-center">
             <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
               <Calendar className="w-6 h-6 text-indigo-400" />
             </div>
-            <p className="font-semibold text-gray-700">No availability set yet</p>
-            <p className="text-sm text-gray-400">Click "+ Add Slot" to set your first available time window.</p>
+            <p className="font-semibold text-gray-700">No upcoming availability set</p>
+            <p className="text-sm text-gray-400">Click "+ Add Slot" to add a specific date and time you're free.</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {daysWithSlots.map(({ day, dayIndex, slots: daySlots }) => (
+            {sortedDates.map((dateKey, i) => (
               <motion.div
-                key={day}
+                key={dateKey}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: dayIndex * 0.04 }}
+                transition={{ delay: i * 0.04 }}
                 className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm"
               >
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
                     <Calendar className="w-5 h-5 text-indigo-600" />
                   </div>
-                  <h3 className="font-semibold text-gray-900">{day}</h3>
+                  <h3 className="font-semibold text-gray-900">{formatDateHeading(dateKey)}</h3>
                   <span className="ml-auto text-sm text-green-600 flex items-center gap-1">
                     <CheckCircle2 className="w-4 h-4" /> Available
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  {daySlots.map(slot => (
+                  {slotsByDate[dateKey].map(slot => (
                     <div key={slot.id} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl">
                       <Clock className="w-4 h-4" />
-                      <span className="font-medium text-sm">{fmt12(slot.startTime)} – {fmt12(slot.endTime)}</span>
+                      <span className="font-medium text-sm">
+                        {fmt12(slot.startTime)} – {fmt12(slot.endTime)}
+                      </span>
                       <button
                         onClick={() => handleDeleteSlot(slot.id)}
                         disabled={deletingId === slot.id}

@@ -1,5 +1,9 @@
-// src/features/tutee/pages/Discover.tsx
-// CHANGE: "View Profile" on TutorCard now opens TutorProfileModal instead of going nowhere
+// src/features/tutee/pages/Discover.tsx — FULL REPLACEMENT
+//
+// Changes:
+//  • Passes currentUserId to BookingModal (self-booking prevention)
+//  • Filters logged-in tutor's own card from the discover list
+//  • handleBooking refreshes wallet after booking
 
 import React, { useEffect, useState } from 'react';
 import { SearchFilters } from '../components/SearchFilters';
@@ -29,18 +33,29 @@ export const Discover: React.FC = () => {
       try {
         setIsLoading(true);
         setError(null);
-        const [tutorResponse, walletResponse] = await Promise.all([
+
+        // Fetch tutors and wallet independently so a missing wallet
+        // never prevents the tutor list from rendering.
+        const [tutorResult, walletResult] = await Promise.allSettled([
           tutorApi.getTutors(filters),
           walletApi.getWallet(),
         ]);
 
         if (!ignore) {
-          setTutors(tutorResponse.data);
-          setUserTokens(walletResponse.data.balance);
-        }
-      } catch (err) {
-        if (!ignore) {
-          setError(err instanceof Error ? err.message : 'Failed to load tutors');
+          if (tutorResult.status === 'fulfilled') {
+            const filtered = tutorResult.value.data.filter(t => t.id !== user?.id);
+            setTutors(filtered);
+          } else {
+            setError(tutorResult.reason instanceof Error
+              ? tutorResult.reason.message
+              : 'Failed to load tutors');
+          }
+
+          if (walletResult.status === 'fulfilled') {
+            setUserTokens(walletResult.value.data.balance);
+          }
+          // Wallet error is silently ignored — balance stays 0,
+          // the backend now auto-creates it on next request.
         }
       } finally {
         if (!ignore) setIsLoading(false);
@@ -49,7 +64,7 @@ export const Discover: React.FC = () => {
 
     loadDiscoverData();
     return () => { ignore = true; };
-  }, [filters]);
+  }, [filters, user?.id]);
 
   const handleClearFilters = () => setFilters({ query: '' });
 
@@ -61,6 +76,7 @@ export const Discover: React.FC = () => {
 
   // "Book Session" initiated from profile modal
   const handleBookFromProfile = (tutor: TutorSearchResult) => {
+    setProfileTutor(null);
     setBookingTutor(tutor);
   };
 
@@ -127,9 +143,10 @@ export const Discover: React.FC = () => {
         />
       )}
 
-      {/* Booking modal */}
+      {/* Booking modal — currentUserId prevents self-booking */}
       <BookingModal
         tutor={bookingTutor}
+        currentUserId={user?.id}
         userTokens={userTokens}
         onClose={() => setBookingTutor(null)}
         onConfirm={handleBooking}

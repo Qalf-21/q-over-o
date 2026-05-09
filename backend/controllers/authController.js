@@ -1,12 +1,9 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// Auth Controller
+// backend/controllers/authController.js — FULL REPLACEMENT
 //
-// Changes from original:
-//   • login()          → now includes refresh_token in the response payload
-//   • register()       → now includes refresh_token in the response payload
-//   • refreshSession() → new endpoint: exchanges a refresh_token for a new
-//                        access_token using Supabase's admin-level refresh
-// ─────────────────────────────────────────────────────────────────────────────
+// Change from previous version:
+//   • register() now upserts a wallets row (balance_tokens = 0) for the new user
+//     immediately after the profile row is created. This prevents the
+//     "Wallet not found" 404 that new tutees hit on the Discover page.
 
 const supabase = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
@@ -27,6 +24,7 @@ exports.register = asyncHandler(async (req, res) => {
     throw new AppError('First name and last name must each be at least 2 characters', 400, 'VALIDATION_ERROR');
   }
 
+  // ── 1. Create Supabase auth user ────────────────────────────────────────────
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email: normalizedEmail,
     password,
@@ -35,13 +33,16 @@ exports.register = asyncHandler(async (req, res) => {
     },
   });
 
-  if (authError)        throw new AppError(authError.message, 400, authError.code);
+  if (authError)          throw new AppError(authError.message, 400, authError.code);
   if (!authData.user?.id) throw new AppError('Signup failed before user creation', 500);
 
+  const userId = authData.user.id;
+
+  // ── 2. Upsert profile row ───────────────────────────────────────────────────
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .upsert({
-      id:         authData.user.id,
+      id:         userId,
       first_name: firstName,
       last_name:  lastName,
       email:      normalizedEmail,
@@ -53,8 +54,24 @@ exports.register = asyncHandler(async (req, res) => {
     .single();
 
   if (profileError) {
-    await supabase.auth.admin.deleteUser(authData.user.id);
-    throw new AppError('Failed to update profile', 500);
+    await supabase.auth.admin.deleteUser(userId);
+    throw new AppError('Failed to create profile', 500);
+  }
+
+  // ── 3. Upsert wallet row (0 balance) ────────────────────────────────────────
+  // Use upsert so re-registrations or trigger-created wallets don't cause a
+  // duplicate-key error. A missing wallet breaks the Discover page entirely.
+  const { error: walletError } = await supabase
+    .from('wallets')
+    .upsert(
+      { user_id: userId, balance_tokens: 0 },
+      { onConflict: 'user_id' }
+    );
+
+  if (walletError) {
+    // Log but don't block — the auth + profile already exist; wallet can be
+    // created lazily by the getWallet endpoint if this fails.
+    console.error('[register] wallet upsert failed:', walletError.message);
   }
 
   res.status(201).json({
@@ -62,11 +79,10 @@ exports.register = asyncHandler(async (req, res) => {
     message: 'Registration successful. Please check your email to verify your account.',
     data: {
       user: {
-        id:    authData.user.id,
+        id:    userId,
         email: authData.user.email,
         ...profile,
       },
-      // ── Both tokens returned so the frontend can refresh without re-login ──
       token:         authData.session?.access_token  ?? '',
       refresh_token: authData.session?.refresh_token ?? '',
     },
@@ -92,6 +108,14 @@ exports.login = asyncHandler(async (req, res) => {
     .eq('id', data.user.id)
     .single();
 
+  // ── Ensure wallet exists for users who registered before this fix ────────────
+  await supabase
+    .from('wallets')
+    .upsert(
+      { user_id: data.user.id, balance_tokens: 0 },
+      { onConflict: 'user_id' }
+    );
+
   res.json({
     success: true,
     message: 'Login successful',
@@ -108,7 +132,6 @@ exports.login = asyncHandler(async (req, res) => {
         first_name:   profile?.first_name,
         last_name:    profile?.last_name,
       },
-      // ── Both tokens returned so the frontend can refresh without re-login ──
       token:         data.session.access_token,
       refresh_token: data.session.refresh_token,
     },
@@ -122,10 +145,6 @@ exports.getMe = asyncHandler(async (req, res) => {
 });
 
 // ─── Token refresh ────────────────────────────────────────────────────────────
-//
-// Accepts a Supabase refresh_token and returns a new access_token (and a
-// rotated refresh_token). No authMiddleware applied — the whole point is that
-// the access_token is expired at call time.
 
 exports.refreshSession = asyncHandler(async (req, res) => {
   const { refresh_token } = req.body;

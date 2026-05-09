@@ -161,35 +161,42 @@ exports.getTutorReviews = asyncHandler(async (req, res) => {
 
 exports.getTutorAvailability = asyncHandler(async (req, res) => {
   const { id } = req.params;
-
+  const now = new Date().toISOString();
+ 
   const { data: slots, error } = await supabase
     .from('availability_slots')
     .select('*')
     .eq('tutor_id', id)
-    .eq('is_available', true);
-
+    .eq('is_available', true)
+    .gt('end_time', now)          // ← only future slots
+    .order('start_time', { ascending: true });
+ 
   if (error) throw new AppError('Failed to fetch availability', 500);
-
+ 
   res.json({
     success: true,
     data: { slots: slots || [] }
   });
 });
 
-// ADD this export to backend/controllers/tutorController.js
-// Place it directly after exports.getTutorAvailability
+
 
 exports.getMyAvailability = asyncHandler(async (req, res) => {
   const tutorId = req.user.id;
+  const now = new Date().toISOString();
+ 
   const { data: slots, error } = await supabase
     .from('availability_slots')
     .select('*')
     .eq('tutor_id', tutorId)
     .eq('is_available', true)
+    .gt('end_time', now)          // ← only future / in-progress slots
     .order('start_time', { ascending: true });
+ 
   if (error) throw new AppError('Failed to fetch availability', 500);
   res.json({ success: true, data: slots || [] });
 });
+
 
 exports.createAvailability = asyncHandler(async (req, res) => {
   const tutorId = req.user.id;

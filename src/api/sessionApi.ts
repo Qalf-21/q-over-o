@@ -1,3 +1,9 @@
+// src/api/sessionApi.ts — FULL REPLACEMENT
+//
+// Changes:
+//  • BookSessionPayload now includes optional notes and availability_slot_id
+//    so the backend can trim/split the slot after booking
+
 import { apiRequest } from './client';
 import type { Session, TuteeSession } from '../types/tutor';
 
@@ -6,6 +12,8 @@ export type BookSessionPayload = {
   subject_id: string;
   start_time: string;
   end_time: string;
+  notes?: string;
+  availability_slot_id?: string;  // ← new: tells backend which slot was used
 };
 
 const minutesBetween = (start?: string, end?: string) => {
