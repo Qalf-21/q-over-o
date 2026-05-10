@@ -13,13 +13,10 @@ const {
   getTutorAvailability,
   getMyAvailability,
   getMyProfile,
-  updateProfile,
   createAvailability,
   deleteAvailability,
   toggleAvailability,          // ← new
-  revertTutorApplication,
   getSubjects,
-  getDashboardStats,
 } = require('../controllers/tutorController');
 const { becomeTutor } = require('../controllers/userController');
 

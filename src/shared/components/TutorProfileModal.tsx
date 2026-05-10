@@ -343,17 +343,20 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
             )}
           </div>
 
-          {/* ── Footer CTA ── */}
-          {showBook && (
-            <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-gray-50/50">
-              <button
-                onClick={() => { onBook!(tutor!); onClose(); }}
-                className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-md shadow-indigo-200 text-sm"
-              >
-                Book a Session with {tutor!.name.split(' ')[0]}
-              </button>
-            </div>
-          )}
+ {/* ── Footer CTA ── */}
+{showBook && (
+  <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-gray-50/50">
+    <button
+      onClick={() => { onBook!(tutor!); onClose(); }}
+      disabled={!tutor!.isAvailable}
+      className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-md shadow-indigo-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500 disabled:shadow-none"
+    >
+      {tutor!.isAvailable
+        ? `Book a Session with ${tutor!.name.split(' ')[0]}`
+        : `${tutor!.name.split(' ')[0]} is Currently Unavailable`}
+    </button>
+  </div>
+)}
 
           {/* Own profile — informational footer */}
           {isSelf && (

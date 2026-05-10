@@ -303,6 +303,8 @@ exports.getMyProfile = asyncHandler(async (req, res) => {
   });
 });
 
+
+
 exports.getSubjects = asyncHandler(async (req, res) => {
   const { data: subjects, error } = await supabase
     .from('subjects')
