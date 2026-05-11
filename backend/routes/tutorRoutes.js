@@ -20,6 +20,8 @@ const {
 } = require('../controllers/tutorController');
 const { becomeTutor } = require('../controllers/userController');
 
+//const { updateProfile } = require('../controllers/profileController');
+
 const router = express.Router();
 
 // ── Specific static public routes (must come before /:id wildcard) ────────────
@@ -33,9 +35,9 @@ router.get('/subjects', getSubjects);
 
 router.post('/become',               authMiddleware, becomeTutor);
 router.get('/profile/me',            authMiddleware, requireTutor, getMyProfile);
-router.put('/profile',               authMiddleware, requireTutor, updateProfile);
-router.get('/dashboard/stats',       authMiddleware, requireTutor, getDashboardStats);
-router.delete('/application',        authMiddleware, revertTutorApplication);
+//router.put('/profile',               authMiddleware, requireTutor, updateProfile);
+//router.get('/dashboard/stats',       authMiddleware, requireTutor, getDashboardStats);
+//router.delete('/application',        authMiddleware, revertTutorApplication);
 
 // Availability — GET must be before /:id or Express will match id="availability"
 router.get('/availability',          authMiddleware, requireTutor, getMyAvailability);
