@@ -1,48 +1,76 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// src/features/dashboard/components/DashboardLayout.tsx  (UPDATED)
+//
+// Changes from original:
+//   • Wraps children in <ToastProvider>
+//   • Passes onDeposit to TopNavbar so the global + Add CTA works
+//   • Renders <DepositModal> at layout level (tutees only)
+// ─────────────────────────────────────────────────────────────────────────────
+
 import React, { useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopNavbar } from './TopNavbar';
-import type { User } from '../../auth/types';
+import { useAuth } from '../../../shared/hooks/useAuth';
+import { ToastProvider } from '../../../shared/components/Toast';
+import { DepositModal } from '../../wallet/components/DepositModal';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
-  user: User | null;
 }
 
-export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, user }) => {
+export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
+  const { user } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showDeposit,   setShowDeposit]   = useState(false);
+
+  const isTutee = user?.role !== 'tutor';
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar - Desktop */}
-      <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-gray-200 fixed h-full z-30">
-        <Sidebar user={user} onClose={() => setIsSidebarOpen(false)} />
-      </aside>
-
-      {/* Sidebar - Mobile */}
-      {isSidebarOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div 
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => setIsSidebarOpen(false)}
-          />
-          <aside className="absolute left-0 top-0 h-full w-64 bg-white shadow-xl">
+    <ToastProvider>
+      <div className="flex h-screen bg-gray-50 overflow-hidden">
+        {/* Sidebar — desktop always visible, mobile overlay */}
+        <div className="hidden lg:flex lg:flex-shrink-0">
+          <div className="w-64 flex flex-col border-r border-gray-200 bg-white">
             <Sidebar user={user} onClose={() => setIsSidebarOpen(false)} />
-          </aside>
-        </div>
-      )}
-
-      {/* Main Content */}
-      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen">
-        <TopNavbar 
-          user={user} 
-          onMenuClick={() => setIsSidebarOpen(true)} 
-        />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-auto">
-          <div className="max-w-7xl mx-auto">
-            {children}
           </div>
-        </main>
+        </div>
+
+        {/* Mobile sidebar overlay */}
+        {isSidebarOpen && (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <div
+              className="fixed inset-0 bg-gray-600/75 backdrop-blur-sm"
+              onClick={() => setIsSidebarOpen(false)}
+            />
+            <div className="fixed inset-y-0 left-0 w-64 bg-white z-50 shadow-2xl">
+              <Sidebar user={user} onClose={() => setIsSidebarOpen(false)} />
+            </div>
+          </div>
+        )}
+
+        {/* Main content */}
+        <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+          <TopNavbar
+            user={user}
+            onMenuClick={() => setIsSidebarOpen(true)}
+            onDeposit={isTutee ? () => setShowDeposit(true) : undefined}
+          />
+
+          <main className="flex-1 overflow-y-auto">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+              {children}
+            </div>
+          </main>
+        </div>
+
+        {/* Global deposit modal (tutees only) */}
+        {isTutee && (
+          <DepositModal
+            isOpen={showDeposit}
+            onClose={() => setShowDeposit(false)}
+          />
+        )}
       </div>
-    </div>
+    </ToastProvider>
   );
 };
