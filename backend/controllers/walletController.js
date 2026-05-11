@@ -1,170 +1,254 @@
-// backend/controllers/walletController.js — getBalance PATCHED
-//
-// Change: getBalance now auto-creates a zero-balance wallet if none exists
-// instead of throwing 404. This is a safety net for users who registered
-// before the wallet-creation fix was added to authController.register().
+/**
+ * backend/controllers/walletController.js  (FULL REPLACEMENT)
+ *
+ * Wallet + M-Pesa Payment Controller for Q-over-o
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Routes handled:
+ *   GET  /api/wallet                   → getBalance
+ *   GET  /api/wallet/balance           → getBalance (alias)
+ *   GET  /api/wallet/transactions      → getTransactions
+ *   POST /api/wallet/purchase          → purchaseTokens  (initiates STK Push)
+ *   GET  /api/wallet/purchase/:id/status → getPurchaseStatus
+ *   POST /api/wallet/mpesa-callback    → handleMpesaCallback  (Safaricom only)
+ *   GET  /api/wallet/spending          → getSpending
+ *   POST /api/wallet/withdraw          → withdraw
+ */
 
-const supabase = require('../config/supabase');
+'use strict';
+
+const { v4: uuidv4 }    = require('uuid');
+const supabase           = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
-const paymentService = require('../services/paymentService');
+const { normalizePhoneOrThrow }  = require('../utils/phoneNormalizer');
+const { logger, auditPayment, withCorrelationId } = require('../utils/logger');
+const paymentService     = require('../services/paymentService');
+const escrowService      = require('../services/escrowService');
+
+// ── Get wallet balance + recent transactions ──────────────────────────────────
 
 exports.getBalance = asyncHandler(async (req, res) => {
   const userId = req.user.id;
 
-  let { data: wallet, error } = await supabase
+  const { data: wallet, error } = await supabase
     .from('wallets')
-    .select('*')
+    .select('balance_tokens, updated_at')
     .eq('user_id', userId)
     .single();
 
-  // ── Auto-create wallet if missing (lazy safety net) ─────────────────────────
   if (error || !wallet) {
-    const { data: created, error: createError } = await supabase
-      .from('wallets')
-      .upsert({ user_id: userId, balance_tokens: 0 }, { onConflict: 'user_id' })
-      .select('*')
-      .single();
-
-    if (createError || !created) {
-      throw new AppError('Wallet not found and could not be created', 500);
-    }
-    wallet = created;
+    throw new AppError('Wallet not found', 404, 'WALLET_NOT_FOUND');
   }
 
-  const { data: transactions, error: transactionError } = await supabase
+  const { data: transactions } = await supabase
     .from('transactions')
-    .select('*')
+    .select('id, type, amount_tokens, balance_after, status, reference, description, session_id, created_at')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false });
-
-  if (transactionError) throw new AppError('Failed to fetch transactions', 500);
+    .order('created_at', { ascending: false })
+    .limit(20);
 
   res.json({
     success: true,
     data: {
-      ...wallet,
-      transactions: transactions || []
-    }
+      balance:      wallet.balance_tokens,
+      updatedAt:    wallet.updated_at,
+      transactions: transactions || [],
+    },
   });
 });
+
+// ── Get transactions (paginated) ──────────────────────────────────────────────
 
 exports.getTransactions = asyncHandler(async (req, res) => {
   const userId = req.user.id;
+  const limit  = Math.min(parseInt(req.query.limit  || '50', 10), 100);
+  const offset = parseInt(req.query.offset || '0', 10);
+  const type   = req.query.type;  // optional filter
 
-  const { data: transactions, error } = await supabase
+  let query = supabase
     .from('transactions')
-    .select('*')
+    .select('*', { count: 'exact' })
     .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
 
+  if (type) query = query.eq('type', type);
+
+  const { data, error, count } = await query;
   if (error) throw new AppError('Failed to fetch transactions', 500);
 
-  res.json({
+  res.json({ success: true, data, meta: { total: count, limit, offset } });
+});
+
+// ── Initiate token purchase via STK Push ──────────────────────────────────────
+
+exports.purchaseTokens = asyncHandler(async (req, res) => {
+  const userId        = req.user.id;
+  const { amountKes, phoneNumber } = req.body;
+  const correlationId = req.correlationId || uuidv4();
+  const log           = withCorrelationId(correlationId, { userId });
+
+  // ── Input validation ───────────────────────────────────────────────────────
+  if (!amountKes || !phoneNumber) {
+    throw new AppError('amountKes and phoneNumber are required', 400, 'MISSING_FIELDS');
+  }
+
+  log.info({ event: 'purchase_tokens_request', amountKes }, 'Token purchase requested');
+
+  const result = await paymentService.purchaseTokens({
+    userId,
+    amountKes:   parseInt(amountKes, 10),
+    phoneNumber,
+    correlationId,
+  });
+
+  res.status(202).json({
     success: true,
-    data: transactions
+    message: 'Payment request sent to your phone. Please enter your M-Pesa PIN.',
+    data: {
+      paymentIntentId:   result.paymentIntentId,
+      checkoutRequestId: result.checkoutRequestId,
+      tokensExpected:    result.tokensExpected,
+      customerMessage:   result.customerMessage,
+      correlationId:     result.correlationId,
+    },
   });
 });
 
-exports.purchaseTokens = asyncHandler(async (req, res) => {
-  const { amountKes, phoneNumber } = req.body;
-  const userId = req.user.id;
+// ── Poll payment intent status ────────────────────────────────────────────────
 
-  if (!amountKes || !phoneNumber) {
-    throw new AppError('Amount and phone number are required', 400);
+exports.getPurchaseStatus = asyncHandler(async (req, res) => {
+  const userId          = req.user.id;
+  const { intentId }    = req.params;
+
+  const { data: intent, error } = await supabase
+    .from('payment_intents')
+    .select('id, status, tokens_expected, mpesa_receipt_number, created_at, updated_at, result_description')
+    .eq('id', intentId)
+    .eq('user_id', userId)
+    .single();
+
+  if (error || !intent) {
+    throw new AppError('Payment intent not found', 404, 'NOT_FOUND');
   }
 
-  const tokensExpected = Math.floor(amountKes * 0.5);
+  res.json({ success: true, data: intent });
+});
 
-  const paymentIntent = await paymentService.createPaymentIntent(
-    userId,
-    amountKes,
-    tokensExpected
-  );
+// ── M-Pesa Callback Handler ───────────────────────────────────────────────────
 
-  const stkResponse = await paymentService.initiateSTKPush(
-    phoneNumber,
-    amountKes,
-    `QOVERO-${paymentIntent.id}`
-  );
+exports.handleMpesaCallback = asyncHandler(async (req, res) => {
+  const correlationId = req.headers['x-correlation-id'] || uuidv4();
+  const log           = withCorrelationId(correlationId, { source: 'daraja_callback' });
 
-  await supabase
-    .from('payment_intents')
-    .update({ mpesa_reference: stkResponse.checkoutRequestID })
-    .eq('id', paymentIntent.id);
+  // ── ALWAYS respond 200 to Safaricom immediately ────────────────────────────
+  // If we don't respond fast, Safaricom retries. We acknowledge first, process after.
+  res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
 
-  res.json({
-    success: true,
-    message: 'Payment initiated. Check your phone for M-Pesa prompt.',
-    data: {
-      paymentIntentId: paymentIntent.id,
-      checkoutRequestId: stkResponse.checkoutRequestID,
-      tokensExpected
+  // ── Async processing continues after response ──────────────────────────────
+  setImmediate(async () => {
+    try {
+      // ── 1. Safe payload extraction ──────────────────────────────────────────
+      const body = req.body;
+
+      if (!body || typeof body !== 'object') {
+        log.warn({ event: 'callback_empty_body' }, 'Empty/non-object callback body');
+        return;
+      }
+
+      // Daraja sends: { Body: { stkCallback: { ... } } }
+      const stkCallback = body?.Body?.stkCallback;
+
+      if (!stkCallback) {
+        log.warn({ event: 'callback_malformed', body }, 'Malformed callback — missing stkCallback');
+        return;
+      }
+
+      // ── 2. Validate required fields ──────────────────────────────────────────
+      const { CheckoutRequestID, MerchantRequestID, ResultCode, ResultDesc } = stkCallback;
+
+      if (!CheckoutRequestID || !MerchantRequestID || ResultCode === undefined) {
+        log.warn({ event: 'callback_missing_fields', stkCallback },
+          'Callback missing required fields');
+        return;
+      }
+
+      auditPayment({
+        event:              'callback_received',
+        checkoutRequestId:  CheckoutRequestID,
+        merchantRequestId:  MerchantRequestID,
+        resultCode:         ResultCode,
+        correlationId,
+      });
+
+      // ── 3. Delegate to payment service (verify + credit) ───────────────────
+      const result = await paymentService.processCallback(stkCallback, correlationId);
+
+      log.info({ event: 'callback_processed', result, correlationId }, 'Callback processing complete');
+
+    } catch (err) {
+      log.error({ event: 'callback_processing_error', err }, 'Error processing Daraja callback');
+      // Errors are logged but do NOT affect the 200 response already sent.
+      // The reconciliation job will catch any stuck 'processing' intents.
     }
   });
 });
 
-exports.handleMpesaCallback = asyncHandler(async (req, res) => {
-  const callbackData = req.body;
-  console.log('M-Pesa Callback:', JSON.stringify(callbackData, null, 2));
-  const result = await paymentService.handleCallback(callbackData);
-  res.json({ ResultCode: 0, ResultDesc: 'Success' });
-});
+// ── Get spending summary ──────────────────────────────────────────────────────
 
 exports.getSpending = asyncHandler(async (req, res) => {
   const userId = req.user.id;
 
-  const { data: transactions, error } = await supabase
+  const { data: escrowTxns } = await supabase
     .from('transactions')
-    .select('*')
+    .select('amount_tokens')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+    .eq('type', 'escrow');
 
-  if (error) throw new AppError('Failed to fetch spending', 500);
+  const { data: wallet } = await supabase
+    .from('wallets')
+    .select('balance_tokens')
+    .eq('user_id', userId)
+    .single();
 
-  const totalSpent = transactions
-    .filter(t => ['escrow', 'purchase'].includes(t.type))
-    .reduce((sum, t) => sum + t.amount_tokens, 0);
+  const totalSpent = (escrowTxns || []).reduce((sum, t) => sum + (t.amount_tokens || 0), 0);
 
   res.json({
     success: true,
     data: {
       totalSpent,
-      transactions
-    }
+      currentBalance: wallet?.balance_tokens || 0,
+    },
   });
 });
 
-// Tutor withdrawal
+// ── Tutor withdrawal ──────────────────────────────────────────────────────────
+
 exports.withdraw = asyncHandler(async (req, res) => {
+  const userId        = req.user.id;
+  const correlationId = req.correlationId || uuidv4();
   const { amount, phoneNumber, payoutMethod = 'mpesa' } = req.body;
-  const userId = req.user.id;
 
-  if (req.user.role !== 'tutor') {
-    throw new AppError('Only tutors can withdraw earnings', 403);
+  if (!amount || !phoneNumber) {
+    throw new AppError('amount and phoneNumber are required', 400, 'MISSING_FIELDS');
   }
 
-  if (!amount || !Number.isFinite(Number(amount)) || Number(amount) < 100) {
-    throw new AppError('Minimum withdrawal is 100 tokens', 400);
+  const parsedAmount = parseInt(amount, 10);
+  if (isNaN(parsedAmount) || parsedAmount < 1) {
+    throw new AppError('Invalid withdrawal amount', 400, 'INVALID_AMOUNT');
   }
 
-  if (!phoneNumber) {
-    throw new AppError('phoneNumber is required', 400);
-  }
+  const normalisedPhone = normalizePhoneOrThrow(phoneNumber, AppError);
 
-  const { data, error } = await supabase.rpc('request_withdrawal_atomic', {
-    p_user_id: userId,
-    p_amount_tokens: Number(amount),
-    p_payout_method: payoutMethod,
-    p_payout_reference: phoneNumber
+  const result = await escrowService.initiateWithdrawal({
+    tutorId:      userId,
+    amountTokens: parsedAmount,
+    phoneNumber:  normalisedPhone,
+    correlationId,
   });
-
-  if (error) {
-    throw new AppError(error.message, 400);
-  }
 
   res.json({
     success: true,
-    message: 'Withdrawal request submitted for review',
-    data
+    message: 'Withdrawal request submitted. Processing within 24 hours.',
+    data: result,
   });
 });

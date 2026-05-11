@@ -1,203 +1,289 @@
-const axios = require('axios');
-const supabase = require('../config/supabase');
-const { AppError } = require('../utils/errorHandler');
+/**
+ * backend/services/paymentService.js  (FULL REPLACEMENT)
+ *
+ * Production Daraja Payment Orchestrator for Q-over-o
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Replaces the prototype paymentService.js.
+ *
+ * Flow:
+ *   purchaseTokens()
+ *     → normalise phone
+ *     → create payment intent (initiated)
+ *     → STK Push via darajaService
+ *     → attach checkout IDs (pending)
+ *     → return to client
+ *
+ * Callback flow (see callbackHandler in walletController):
+ *   receive callback
+ *     → parse + validate payload
+ *     → look up intent by checkoutRequestId
+ *     → mark processing
+ *     → query Safaricom to VERIFY (queryStkStatus)
+ *     → if verified: completePaymentAtomic (credit wallet)
+ *     → if failed:   markFailed
+ *
+ * Nothing in this file credits wallets.
+ * Wallet crediting is ONLY done by completePaymentAtomic() which is atomic.
+ */
+
+'use strict';
+
+const { v4: uuidv4 }                   = require('uuid');
+const { AppError }                     = require('../utils/errorHandler');
+const { normalizePhoneOrThrow }        = require('../utils/phoneNormalizer');
+const { logger, auditPayment }         = require('../utils/logger');
+const { initiateSTKPush, queryStkStatus } = require('./darajaService');
+const {
+  createPaymentIntent,
+  attachStkIds,
+  getByCheckoutRequestId,
+  markProcessing,
+  completePaymentAtomic,
+  markFailed,
+  kesToTokens,
+}                                      = require('./paymentIntentService');
 
 class PaymentService {
-  constructor() {
-    this.baseURL = process.env.MPESA_BASE_URL;
-    this.consumerKey = process.env.MPESA_CONSUMER_KEY;
-    this.consumerSecret = process.env.MPESA_CONSUMER_SECRET;
-    this.passkey = process.env.MPESA_PASSKEY;
-    this.shortcode = process.env.MPESA_SHORTCODE;
-    this.callbackURL = process.env.MPESA_CALLBACK_URL;
-  }
-
   /**
-   * Get M-Pesa access token
+   * Initiate a token purchase via M-Pesa STK Push.
+   *
+   * @param {object} params
+   * @param {string} params.userId       - Authenticated user ID
+   * @param {number} params.amountKes    - Amount in KES
+   * @param {string} params.phoneNumber  - Raw phone from client
+   * @param {string} [params.correlationId]
+   *
+   * @returns {{ paymentIntentId, checkoutRequestId, customerMessage, tokensExpected }}
    */
-  async getAccessToken() {
-    const auth = Buffer.from(`${this.consumerKey}:${this.consumerSecret}`).toString('base64');
-    
-    try {
-      const response = await axios.get(
-        `${this.baseURL}/oauth/v1/generate?grant_type=client_credentials`,
-        {
-          headers: { Authorization: `Basic ${auth}` }
-        }
-      );
-      return response.data.access_token;
-    } catch (error) {
-      throw new AppError('Failed to get M-Pesa access token', 500);
+  async purchaseTokens({ userId, amountKes, phoneNumber, correlationId }) {
+    const traceId = correlationId || uuidv4();
+
+    // ── 1. Validate & normalise phone ──────────────────────────────────────────
+    const normalisedPhone = normalizePhoneOrThrow(phoneNumber, AppError);
+
+    // ── 2. Validate amount ─────────────────────────────────────────────────────
+    const parsedAmount = parseInt(amountKes, 10);
+    if (isNaN(parsedAmount) || parsedAmount < 10) {
+      throw new AppError('Minimum purchase is KES 10', 400, 'AMOUNT_TOO_LOW');
     }
-  }
-
-  /**
-   * Generate password for STK push
-   */
-  generatePassword(timestamp) {
-    const str = `${this.shortcode}${this.passkey}${timestamp}`;
-    return Buffer.from(str).toString('base64');
-  }
-
-  /**
-   * Initiate M-Pesa STK Push
-   */
-  async initiateSTKPush(phoneNumber, amount, accountReference) {
-    const token = await this.getAccessToken();
-    const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, -3);
-    const password = this.generatePassword(timestamp);
-
-    // Format phone number (remove leading 0, add 254)
-    const formattedPhone = phoneNumber.startsWith('0') 
-      ? `254${phoneNumber.slice(1)}` 
-      : phoneNumber;
-
-    const payload = {
-      BusinessShortCode: this.shortcode,
-      Password: password,
-      Timestamp: timestamp,
-      TransactionType: 'CustomerPayBillOnline',
-      Amount: amount,
-      PartyA: formattedPhone,
-      PartyB: this.shortcode,
-      PhoneNumber: formattedPhone,
-      CallBackURL: this.callbackURL,
-      AccountReference: accountReference,
-      TransactionDesc: 'Q-over-o Token Purchase'
-    };
-
-    try {
-      const response = await axios.post(
-        `${this.baseURL}/mpesa/stkpush/v1/processrequest`,
-        payload,
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
-
-      return {
-        success: true,
-        checkoutRequestID: response.data.CheckoutRequestID,
-        merchantRequestID: response.data.MerchantRequestID,
-        responseDescription: response.data.ResponseDescription
-      };
-    } catch (error) {
-      console.error('M-Pesa STK Push Error:', error.response?.data || error.message);
-      throw new AppError('Failed to initiate M-Pesa payment', 500);
+    if (parsedAmount > 150_000) {
+      throw new AppError('Maximum single purchase is KES 150,000', 400, 'AMOUNT_TOO_HIGH');
     }
-  }
 
-  /**
-   * Create payment intent record
-   */
-  async createPaymentIntent(userId, amountKes, tokensExpected) {
-    const { data, error } = await supabase
-      .from('payment_intents')
-      .insert({
-        user_id: userId,
-        amount_kes: amountKes,
-        tokens_expected: tokensExpected,
-        status: 'pending'
-      })
-      .select()
-      .single();
+    const tokensExpected = kesToTokens(parsedAmount);
 
-    if (error) throw new AppError('Failed to create payment intent', 500);
-    return data;
-  }
-
-  /**
-   * Complete payment and credit wallet
-   */
-  async completePayment(mpesaReference, paymentIntentId) {
-    // Update payment intent
-    const { data: paymentIntent, error: piError } = await supabase
-      .from('payment_intents')
-      .update({ 
-        status: 'completed',
-        mpesa_reference: mpesaReference,
-        completed_at: new Date().toISOString()
-      })
-      .eq('id', paymentIntentId)
-      .select()
-      .single();
-
-    if (piError) throw new AppError('Failed to update payment intent', 500);
-
-    // Get wallet
-    const { data: wallet, error: walletError } = await supabase
-      .from('wallets')
-      .select('*')
-      .eq('user_id', paymentIntent.user_id)
-      .single();
-
-    if (walletError) throw new AppError('Wallet not found', 404);
-
-    const newBalance = wallet.balance_tokens + paymentIntent.tokens_expected;
-
-    // Update wallet
-    const { error: updateError } = await supabase
-      .from('wallets')
-      .update({ balance_tokens: newBalance })
-      .eq('user_id', paymentIntent.user_id);
-
-    if (updateError) throw new AppError('Failed to credit wallet', 500);
-
-    // Log transaction
-    await supabase.from('transactions').insert({
-      user_id: paymentIntent.user_id,
-      type: 'purchase',
-      amount_tokens: paymentIntent.tokens_expected,
-      balance_before: wallet.balance_tokens,
-      balance_after: newBalance,
-      status: 'completed',
-      reference: mpesaReference,
-      metadata: { payment_intent_id: paymentIntentId }
+    auditPayment({
+      event:  'purchase_initiated',
+      userId,
+      amountKes: parsedAmount,
+      tokensExpected,
+      correlationId: traceId,
     });
 
-    return { 
-      success: true, 
-      tokensAdded: paymentIntent.tokens_expected,
-      newBalance 
+    // ── 3. Create payment intent ───────────────────────────────────────────────
+    const intent = await createPaymentIntent({
+      userId,
+      amountKes:   parsedAmount,
+      phoneNumber: normalisedPhone,
+      correlationId: traceId,
+    });
+
+    // ── 4. STK Push ────────────────────────────────────────────────────────────
+    let stkResponse;
+    try {
+      stkResponse = await initiateSTKPush({
+        phone:             normalisedPhone,
+        amountKes:         parsedAmount,
+        accountReference:  `QOVERO${intent.id.slice(0, 6).toUpperCase()}`,
+        description:       'Token Purchase',
+        correlationId:     traceId,
+      });
+    } catch (err) {
+      // STK push failed — mark intent as failed and surface error to client
+      await markFailed({
+        paymentIntentId:   intent.id,
+        resultCode:        '-1',
+        resultDescription: err.message,
+        callbackPayload:   null,
+        correlationId:     traceId,
+      }).catch(innerErr => logger.error({ innerErr }, 'Could not mark intent failed after STK error'));
+
+      throw err; // re-throw original AppError
+    }
+
+    // ── 5. Attach STK IDs → status: pending ───────────────────────────────────
+    await attachStkIds({
+      paymentIntentId:  intent.id,
+      checkoutRequestId: stkResponse.checkoutRequestId,
+      merchantRequestId: stkResponse.merchantRequestId,
+      correlationId:    traceId,
+    });
+
+    return {
+      paymentIntentId:   intent.id,
+      checkoutRequestId: stkResponse.checkoutRequestId,
+      customerMessage:   stkResponse.customerMessage,
+      tokensExpected,
+      correlationId:     traceId,
     };
   }
 
   /**
-   * Handle M-Pesa callback
+   * Process a Daraja STK Push callback.
+   *
+   * Called by the callback handler AFTER it has validated the payload shape.
+   * This method:
+   *   1. Identifies the payment intent
+   *   2. Marks it as 'processing'
+   *   3. Queries Safaricom to independently VERIFY the transaction
+   *   4. Only then credits the wallet (atomically)
+   *
+   * @param {object} stkCallback  - The stkCallback object from Daraja
+   * @param {string} correlationId
+   *
+   * @returns {{ processed: boolean, duplicate?: boolean }}
    */
-  async handleCallback(callbackData) {
-    const { Body } = callbackData;
-    
-    if (Body.stkCallback.ResultCode !== 0) {
-      // Payment failed
-      const checkoutRequestID = Body.stkCallback.CheckoutRequestID;
-      await supabase
-        .from('payment_intents')
-        .update({ status: 'failed' })
-        .eq('mpesa_reference', checkoutRequestID);
-      
-      return { success: false, message: Body.stkCallback.ResultDesc };
+  async processCallback(stkCallback, correlationId) {
+    const checkoutRequestId = stkCallback.CheckoutRequestID;
+    const resultCode        = stkCallback.ResultCode;
+    const resultDesc        = stkCallback.ResultDesc;
+
+    // ── 1. Find payment intent ─────────────────────────────────────────────────
+    const intent = await getByCheckoutRequestId(checkoutRequestId);
+
+    if (!intent) {
+      logger.warn(
+        { event: 'callback_orphan', checkoutRequestId, correlationId },
+        'Callback received for unknown checkoutRequestId — ignoring',
+      );
+      return { processed: false, reason: 'no_matching_intent' };
     }
 
-    // Payment successful
-    const mpesaReference = Body.stkCallback.CallbackMetadata.Item.find(
-      item => item.Name === 'MpesaReceiptNumber'
-    )?.Value;
+    // ── 2. Idempotency — skip if already terminal ──────────────────────────────
+    if (['completed', 'failed', 'cancelled', 'expired', 'reversed'].includes(intent.status)) {
+      logger.info(
+        { event: 'callback_duplicate_skipped', intentId: intent.id, status: intent.status, correlationId },
+        'Duplicate callback — intent already in terminal state',
+      );
+      return { processed: true, duplicate: true };
+    }
 
-    const checkoutRequestID = Body.stkCallback.CheckoutRequestID;
+    // ── 3. Mark processing (prevents race conditions) ──────────────────────────
+    await markProcessing(intent.id, correlationId);
 
-    // Find payment intent by checkout request ID
-    const { data: paymentIntent } = await supabase
+    // ── 4. Payment failed per callback ────────────────────────────────────────
+    if (resultCode !== 0) {
+      auditPayment({
+        event:           'callback_payment_failed',
+        intentId:        intent.id,
+        checkoutRequestId,
+        resultCode,
+        resultDesc,
+        correlationId,
+      });
+
+      await markFailed({
+        paymentIntentId:   intent.id,
+        resultCode,
+        resultDescription: resultDesc,
+        callbackPayload:   stkCallback,
+        correlationId,
+      });
+
+      return { processed: true, success: false, resultCode, resultDesc };
+    }
+
+    // ── 5. Extract receipt from callback metadata ──────────────────────────────
+    const items = stkCallback.CallbackMetadata?.Item || [];
+    const findItem = (name) => items.find((i) => i.Name === name)?.Value;
+
+    const mpesaReceiptNumber = findItem('MpesaReceiptNumber');
+    const transactionDate    = findItem('TransactionDate');
+    const amountPaid         = findItem('Amount');
+
+    if (!mpesaReceiptNumber) {
+      logger.error(
+        { event: 'callback_missing_receipt', stkCallback, correlationId },
+        'Callback missing MpesaReceiptNumber — cannot credit wallet',
+      );
+      await markFailed({
+        paymentIntentId:   intent.id,
+        resultCode:        '-1',
+        resultDescription: 'Missing MpesaReceiptNumber in callback',
+        callbackPayload:   stkCallback,
+        correlationId,
+      });
+      return { processed: false, reason: 'missing_receipt' };
+    }
+
+    // ── 6. VERIFY with Safaricom STK Query ─────────────────────────────────────
+    let queryResult;
+    try {
+      queryResult = await queryStkStatus(checkoutRequestId, correlationId);
+    } catch (err) {
+      logger.error(
+        { event: 'stk_query_error', err, intentId: intent.id, correlationId },
+        'STK Query failed — cannot verify payment. Will not credit wallet.',
+      );
+      // Do NOT credit wallet without verification
+      // Intent stays in 'processing' — reconciliation job will retry
+      throw new AppError('Payment verification failed. Please contact support if debited.', 502, 'VERIFICATION_FAILED');
+    }
+
+    if (queryResult.status !== 'success') {
+      logger.warn(
+        { event: 'stk_query_mismatch', queryResult, intentId: intent.id, correlationId },
+        'STK Query returned non-success after successful callback — marking failed',
+      );
+      await markFailed({
+        paymentIntentId:   intent.id,
+        resultCode:        queryResult.resultCode,
+        resultDescription: queryResult.resultDesc,
+        callbackPayload:   stkCallback,
+        correlationId,
+      });
+      return { processed: true, success: false, reason: 'query_verification_failed' };
+    }
+
+    // ── 7. Atomic wallet credit ────────────────────────────────────────────────
+    const result = await completePaymentAtomic({
+      paymentIntentId:    intent.id,
+      mpesaReceiptNumber,
+      resultCode,
+      resultDescription:  resultDesc,
+      callbackPayload:    { ...stkCallback, transactionDate, amountPaid },
+      correlationId,
+    });
+
+    if (result.duplicate) {
+      return { processed: true, duplicate: true };
+    }
+
+    return {
+      processed:    true,
+      success:      true,
+      tokensAdded:  result.tokensAdded,
+      newBalance:   result.newBalance,
+    };
+  }
+
+  /**
+   * Check the status of a payment intent by ID.
+   * Safe to call from client polling.
+   */
+  async checkPaymentStatus(paymentIntentId, userId) {
+    const { data: intent, error } = require('../config/supabase')
       .from('payment_intents')
-      .select('*')
-      .eq('mpesa_reference', checkoutRequestID)
+      .select('id, status, tokens_expected, mpesa_receipt_number, created_at, updated_at')
+      .eq('id', paymentIntentId)
+      .eq('user_id', userId)  // users can only check their own intents
       .single();
 
-    if (!paymentIntent) {
-      return { success: false, message: 'Payment intent not found' };
+    if (error || !intent) {
+      throw new AppError('Payment intent not found', 404, 'NOT_FOUND');
     }
 
-    return await this.completePayment(mpesaReference, paymentIntent.id);
+    return intent;
   }
 }
 

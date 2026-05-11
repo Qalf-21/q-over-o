@@ -1,97 +1,81 @@
-// backend/server.js
-// MODIFIED: added profileRoutes mounted at /api/profile
+/**
+ * backend/server.js  (UPDATED — adds correlation ID + structured request logging)
+ *
+ * Drop-in replacement for the existing server.js.
+ * Only the payment-infrastructure additions are marked NEW.
+ */
+
+'use strict';
 
 require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
+
+const express    = require('express');
+const cors       = require('cors');
+const { logger } = require('./utils/logger');           // NEW
+const { correlationIdMiddleware } = require('./middleware/correlationId'); // NEW
+const { errorHandler }            = require('./utils/errorHandler');
+
+// ── Routes ─────────────────────────────────────────────────────────────────
 const authRoutes      = require('./routes/authRoutes');
+const profileRoutes   = require('./routes/profileRoutes');
 const tutorRoutes     = require('./routes/tutorRoutes');
 const sessionRoutes   = require('./routes/sessionRoutes');
-const walletRoutes    = require('./routes/walletRoutes');
+const walletRoutes    = require('./routes/walletRoutes');    // NEW (full replacement)
 const reviewRoutes    = require('./routes/reviewRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const userRoutes      = require('./routes/userRoutes');
-const profileRoutes   = require('./routes/profileRoutes');   // NEW
-const { errorHandler } = require('./utils/errorHandler');
 
 const app  = express();
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 3000;
 
-// Middleware
+// ── Core middleware ─────────────────────────────────────────────────────────
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
-  credentials: true
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));         // prevent large payload attacks
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging (development)
-if (process.env.NODE_ENV === 'development') {
-  app.use((req, res, next) => {
-    console.log(`${req.method} ${req.path}`);
-    next();
-  });
-}
+// NEW: attach correlation ID to every request
+app.use(correlationIdMiddleware);
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    service: 'Q-over-o API'
+// NEW: structured HTTP access log
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    logger.info({
+      event:          'http_request',
+      method:         req.method,
+      path:           req.path,
+      status:         res.statusCode,
+      durationMs:     Date.now() - start,
+      correlationId:  req.correlationId,
+      ip:             req.ip,
+    });
   });
+  next();
 });
 
-// API Routes
+// ── Routes ─────────────────────────────────────────────────────────────────
 app.use('/api/auth',      authRoutes);
-app.use('/api/users',     userRoutes);
+app.use('/api/profile',   profileRoutes);
 app.use('/api/tutors',    tutorRoutes);
-app.use('/api/profile',   profileRoutes);    // NEW — profile management
-app.get('/api/subjects',  require('./controllers/tutorController').getSubjects);
 app.use('/api/sessions',  sessionRoutes);
 app.use('/api/wallet',    walletRoutes);
 app.use('/api/reviews',   reviewRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/users',     userRoutes);
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found'
-  });
-});
+// Health check
+app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
-// Global error handler
+// ── Error handler (must be last) ────────────────────────────────────────────
 app.use(errorHandler);
 
-// Start server
+// ── Start ─────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`
-  Q-over-o API Server running on port ${PORT}
-  Environment: ${process.env.NODE_ENV || 'development'}
-  Frontend: ${process.env.CLIENT_URL || 'http://localhost:5173'}
-
-  Available endpoints:
-    POST   /api/auth/register
-    POST   /api/auth/login
-    GET    /api/auth/me
-    POST   /api/users/become-tutor
-    GET    /api/profile/me
-    PUT    /api/profile/update
-    POST   /api/profile/change-password
-    DELETE /api/profile/delete
-    GET    /api/tutors
-    GET    /api/tutors/:id
-    GET    /api/subjects
-    POST   /api/sessions/book
-    GET    /api/sessions
-    POST   /api/sessions/:id/complete
-    POST   /api/sessions/:id/cancel
-    GET    /api/wallet
-    POST   /api/wallet/purchase
-    GET    /api/reviews/tutor/:tutorId
-    POST   /api/reviews
-  `);
+  logger.info({ event: 'server_start', port: PORT, env: process.env.NODE_ENV },
+    `Q-over-o backend listening on port ${PORT}`);
 });
 
 module.exports = app;
