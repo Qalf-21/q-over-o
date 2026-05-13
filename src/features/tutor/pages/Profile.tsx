@@ -2,7 +2,7 @@
 // Route: /dashboard/profile
 // Changes from original:
 //   • "View public profile" now opens TutorProfileModal instead of new tab
-//   • Success feedback uses the shared Toast component (industry-standard)
+//   • Success feedback uses useToast() hook (Toast/ToastState named exports removed)
 //   • SubjectSelector: fixed so it always shows the dropdown (not just on search)
 //   • tutorApi.getSubjects() response normalised correctly
 
@@ -35,8 +35,7 @@ import type { ProfileData } from '../../../api/profileApi';
 import { tutorApi } from '../../../api/tutorApi';
 import { authService } from '../../auth/authService';
 import { TutorProfileModal } from '../../../shared/components/TutorProfileModal';
-import { Toast } from '../../../shared/components/Toast';
-import type { ToastState } from '../../../shared/components/Toast';
+import { useToast } from '../../../shared/components/Toast';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -326,14 +325,12 @@ interface TutorSettingsState {
 export const Profile: React.FC = () => {
   const navigate = useNavigate();
   const { user, refreshUser, logout } = useAuth();
+  const { showToast } = useToast();
 
   // ── Data state ───────────────────────────────────────────────────────────
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-
-  // ── Toast state ──────────────────────────────────────────────────────────
-  const [toast, setToast] = useState<ToastState | null>(null);
 
   // ── Personal info edit state ─────────────────────────────────────────────
   const [isEditing, setIsEditing] = useState(false);
@@ -431,7 +428,7 @@ export const Profile: React.FC = () => {
       }
       await refreshUser();
       setIsEditing(false);
-      setToast({ type: 'success', title: 'Profile updated', message: 'Your name was saved successfully.' });
+      showToast({ type: 'success', title: 'Profile updated', message: 'Your name was saved successfully.' });
     } catch (err) {
       setEditError(err instanceof Error ? err.message : 'Failed to update profile');
     } finally {
@@ -492,7 +489,7 @@ export const Profile: React.FC = () => {
       });
       await fetchProfile();
       setIsEditingTutor(false);
-      setToast({ type: 'success', title: 'Tutor settings saved', message: 'Your profile is live and visible to students.' });
+      showToast({ type: 'success', title: 'Tutor settings saved', message: 'Your profile is live and visible to students.' });
     } catch (err) {
       setTutorSettingsError(err instanceof Error ? err.message : 'Failed to save tutor settings');
     } finally {
@@ -528,7 +525,7 @@ export const Profile: React.FC = () => {
       setNewPassword('');
       setConfirmPassword('');
       setIsChangingPassword(false);
-      setToast({
+      showToast({
         type: 'success',
         title: 'Password updated',
         message: 'Your account password was changed successfully.',
@@ -549,7 +546,7 @@ export const Profile: React.FC = () => {
       navigate('/login', { replace: true });
     } catch (err) {
       setShowDeleteModal(false);
-      setToast({ type: 'error', title: 'Delete failed', message: err instanceof Error ? err.message : 'Unable to delete account.' });
+      showToast({ type: 'error', title: 'Delete failed', message: err instanceof Error ? err.message : 'Unable to delete account.' });
     } finally {
       setIsDeleting(false);
     }
@@ -581,9 +578,6 @@ export const Profile: React.FC = () => {
 
   return (
     <>
-      {/* ── Toast ── */}
-      <Toast toast={toast} onClose={() => setToast(null)} />
-
       {/* ── Public profile modal ── */}
       {showPublicProfile && user?.id && (
         <TutorProfileModal
