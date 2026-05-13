@@ -1,20 +1,11 @@
-/**
- * backend/controllers/walletController.js  (FULL REPLACEMENT)
- *
- * Wallet + M-Pesa Payment Controller for Q-over-o
- * ─────────────────────────────────────────────────────────────────────────────
- * Routes handled:
- *   GET  /api/wallet                   → getBalance
- *   GET  /api/wallet/balance           → getBalance (alias)
- *   GET  /api/wallet/transactions      → getTransactions
- *   POST /api/wallet/purchase          → purchaseTokens  (initiates STK Push)
- *   GET  /api/wallet/purchase/:id/status → getPurchaseStatus
- *   POST /api/wallet/mpesa-callback    → handleMpesaCallback  (Safaricom only)
- *   GET  /api/wallet/spending          → getSpending
- *   POST /api/wallet/withdraw          → withdraw
- */
-
 'use strict';
+
+/**
+ * backend/controllers/walletController.js
+ *
+ * Fix: getBalance() now upserts the wallet row when it doesn't exist yet,
+ * so new users don't hit WALLET_NOT_FOUND on first load.
+ */
 
 const { v4: uuidv4 }    = require('uuid');
 const supabase           = require('../config/supabase');
@@ -24,20 +15,53 @@ const { logger, auditPayment, withCorrelationId } = require('../utils/logger');
 const paymentService     = require('../services/paymentService');
 const escrowService      = require('../services/escrowService');
 
-// ── Get wallet balance + recent transactions ──────────────────────────────────
+// ── Helper: get or auto-create wallet ────────────────────────────────────────
 
-exports.getBalance = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
-
-  const { data: wallet, error } = await supabase
+async function getOrCreateWallet(userId) {
+  // Try to fetch first (fast path for existing users)
+  const { data: existing, error: fetchError } = await supabase
     .from('wallets')
     .select('balance_tokens, updated_at')
     .eq('user_id', userId)
     .single();
 
-  if (error || !wallet) {
-    throw new AppError('Wallet not found', 404, 'WALLET_NOT_FOUND');
+  if (existing) return existing;
+
+  // Row doesn't exist (PGRST116 = "no rows") — create it
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    // Real DB error, not just "not found"
+    throw new AppError(`Wallet fetch failed: ${fetchError.message}`, 500, 'WALLET_FETCH_ERROR');
   }
+
+  const { data: created, error: createError } = await supabase
+    .from('wallets')
+    .insert({ user_id: userId, balance_tokens: 0 })
+    .select('balance_tokens, updated_at')
+    .single();
+
+  if (createError) {
+    // Could be a race condition where another request already created it —
+    // try one more fetch before giving up.
+    const { data: raceWallet } = await supabase
+      .from('wallets')
+      .select('balance_tokens, updated_at')
+      .eq('user_id', userId)
+      .single();
+
+    if (raceWallet) return raceWallet;
+
+    throw new AppError(`Could not create wallet: ${createError.message}`, 500, 'WALLET_CREATE_ERROR');
+  }
+
+  return created;
+}
+
+// ── Get wallet balance + recent transactions ──────────────────────────────────
+
+exports.getBalance = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+
+  const wallet = await getOrCreateWallet(userId);
 
   const { data: transactions } = await supabase
     .from('transactions')
@@ -62,7 +86,7 @@ exports.getTransactions = asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const limit  = Math.min(parseInt(req.query.limit  || '50', 10), 100);
   const offset = parseInt(req.query.offset || '0', 10);
-  const type   = req.query.type;  // optional filter
+  const type   = req.query.type;
 
   let query = supabase
     .from('transactions')
@@ -87,7 +111,6 @@ exports.purchaseTokens = asyncHandler(async (req, res) => {
   const correlationId = req.correlationId || uuidv4();
   const log           = withCorrelationId(correlationId, { userId });
 
-  // ── Input validation ───────────────────────────────────────────────────────
   if (!amountKes || !phoneNumber) {
     throw new AppError('amountKes and phoneNumber are required', 400, 'MISSING_FIELDS');
   }
@@ -117,8 +140,8 @@ exports.purchaseTokens = asyncHandler(async (req, res) => {
 // ── Poll payment intent status ────────────────────────────────────────────────
 
 exports.getPurchaseStatus = asyncHandler(async (req, res) => {
-  const userId          = req.user.id;
-  const { intentId }    = req.params;
+  const userId       = req.user.id;
+  const { intentId } = req.params;
 
   const { data: intent, error } = await supabase
     .from('payment_intents')
@@ -140,14 +163,11 @@ exports.handleMpesaCallback = asyncHandler(async (req, res) => {
   const correlationId = req.headers['x-correlation-id'] || uuidv4();
   const log           = withCorrelationId(correlationId, { source: 'daraja_callback' });
 
-  // ── ALWAYS respond 200 to Safaricom immediately ────────────────────────────
-  // If we don't respond fast, Safaricom retries. We acknowledge first, process after.
+  // ALWAYS respond 200 to Safaricom immediately to prevent retries
   res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
 
-  // ── Async processing continues after response ──────────────────────────────
   setImmediate(async () => {
     try {
-      // ── 1. Safe payload extraction ──────────────────────────────────────────
       const body = req.body;
 
       if (!body || typeof body !== 'object') {
@@ -155,7 +175,6 @@ exports.handleMpesaCallback = asyncHandler(async (req, res) => {
         return;
       }
 
-      // Daraja sends: { Body: { stkCallback: { ... } } }
       const stkCallback = body?.Body?.stkCallback;
 
       if (!stkCallback) {
@@ -163,32 +182,26 @@ exports.handleMpesaCallback = asyncHandler(async (req, res) => {
         return;
       }
 
-      // ── 2. Validate required fields ──────────────────────────────────────────
-      const { CheckoutRequestID, MerchantRequestID, ResultCode, ResultDesc } = stkCallback;
+      const { CheckoutRequestID, MerchantRequestID, ResultCode } = stkCallback;
 
       if (!CheckoutRequestID || !MerchantRequestID || ResultCode === undefined) {
-        log.warn({ event: 'callback_missing_fields', stkCallback },
-          'Callback missing required fields');
+        log.warn({ event: 'callback_missing_fields', stkCallback }, 'Callback missing required fields');
         return;
       }
 
       auditPayment({
-        event:              'callback_received',
-        checkoutRequestId:  CheckoutRequestID,
-        merchantRequestId:  MerchantRequestID,
-        resultCode:         ResultCode,
+        event:             'callback_received',
+        checkoutRequestId: CheckoutRequestID,
+        merchantRequestId: MerchantRequestID,
+        resultCode:        ResultCode,
         correlationId,
       });
 
-      // ── 3. Delegate to payment service (verify + credit) ───────────────────
       const result = await paymentService.processCallback(stkCallback, correlationId);
-
       log.info({ event: 'callback_processed', result, correlationId }, 'Callback processing complete');
 
     } catch (err) {
       log.error({ event: 'callback_processing_error', err }, 'Error processing Daraja callback');
-      // Errors are logged but do NOT affect the 200 response already sent.
-      // The reconciliation job will catch any stuck 'processing' intents.
     }
   });
 });
@@ -204,11 +217,7 @@ exports.getSpending = asyncHandler(async (req, res) => {
     .eq('user_id', userId)
     .eq('type', 'escrow');
 
-  const { data: wallet } = await supabase
-    .from('wallets')
-    .select('balance_tokens')
-    .eq('user_id', userId)
-    .single();
+  const wallet = await getOrCreateWallet(userId);
 
   const totalSpent = (escrowTxns || []).reduce((sum, t) => sum + (t.amount_tokens || 0), 0);
 
@@ -216,7 +225,7 @@ exports.getSpending = asyncHandler(async (req, res) => {
     success: true,
     data: {
       totalSpent,
-      currentBalance: wallet?.balance_tokens || 0,
+      currentBalance: wallet.balance_tokens || 0,
     },
   });
 });

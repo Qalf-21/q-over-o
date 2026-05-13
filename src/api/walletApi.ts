@@ -1,11 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// src/api/walletApi.ts  (FULL REPLACEMENT)
+// src/api/walletApi.ts
 //
-// Adds:
-//   • initiateDeposit()      — POST /wallet/purchase → STK Push + intent ID
-//   • getPaymentStatus()     — GET  /wallet/payment-status/:id
-//   • getWallet()            — GET  /wallet  (extended, normalises new fields)
-//   • withdraw()             — POST /wallet/withdraw (unchanged signature)
+// Fix: getPaymentStatus() was calling /wallet/payment-status/:id
+//      but the backend route is /wallet/purchase/:intentId/status
+//      → corrected to /wallet/purchase/${paymentIntentId}/status
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { apiRequest } from './client';
@@ -73,13 +71,15 @@ export const walletApi = {
 
   /**
    * Poll the status of a payment intent.
-   * Safe to call repeatedly; backend only verifies against its own state.
+   *
+   * FIX: Previously called /wallet/payment-status/:id which does not exist.
+   * Correct backend route is /wallet/purchase/:intentId/status
    */
   async getPaymentStatus(
     paymentIntentId: string,
   ): Promise<{ success: boolean; data: PaymentStatusResponse }> {
     const response = await apiRequest<PaymentStatusResponse>(
-      `/wallet/payment-status/${paymentIntentId}`,
+      `/wallet/purchase/${paymentIntentId}/status`,
       { method: 'GET' },
     );
     return { success: response.success, data: response.data! };

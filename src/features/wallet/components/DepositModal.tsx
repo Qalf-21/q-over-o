@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // src/features/wallet/components/DepositModal.tsx
 //
-// Premium fintech-grade M-Pesa deposit modal for Q-over-o.
-// Covers the full STK Push UX:
-//   form → confirm → pending → success | failed | timeout
+// Changes:
+//   • Removed "Quick Select" token packages section
+//   • Removed +254 prefix from phone input; now a plain input with
+//     placeholder "01xxxxxxxx / 07xxxxxxxx"
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -17,9 +18,8 @@ import { useDeposit } from '../hooks/useDeposit';
 import { usePaymentPolling } from '../hooks/usePaymentPolling';
 import { validatePhone, formatPhoneInput, stripPhoneFormat } from '../utils/phoneUtils';
 import {
-  TOKEN_PACKAGES, kesToTokens, MIN_DEPOSIT_KES, MAX_DEPOSIT_KES,
+  kesToTokens, MIN_DEPOSIT_KES, MAX_DEPOSIT_KES,
 } from '../utils/tokenPackages';
-import type { TokenPackage } from '../../../types/wallet';
 
 // ── Sub-component types ───────────────────────────────────────────────────────
 
@@ -37,42 +37,6 @@ const maskPhone = (phone: string): string => {
   if (d.length < 6) return phone;
   return `${d.slice(0, 4)} *** ***`;
 };
-
-// ── Package chip ──────────────────────────────────────────────────────────────
-
-const PackageChip: React.FC<{
-  pkg: TokenPackage;
-  selected: boolean;
-  onClick: () => void;
-}> = ({ pkg, selected, onClick }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className={`relative flex flex-col items-center justify-center p-3 rounded-2xl border-2 transition-all duration-200 ${
-      selected
-        ? 'border-indigo-500 bg-indigo-50 shadow-md shadow-indigo-100'
-        : 'border-gray-200 bg-white hover:border-indigo-300 hover:bg-gray-50'
-    }`}
-  >
-    {pkg.badge && (
-      <span
-        className={`absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full whitespace-nowrap ${
-          pkg.badgeColor === 'green'
-            ? 'bg-green-500 text-white'
-            : 'bg-indigo-600 text-white'
-        }`}
-      >
-        {pkg.badge}
-      </span>
-    )}
-    <span className={`text-base font-bold ${selected ? 'text-indigo-700' : 'text-gray-900'}`}>
-      KES {pkg.amountKes.toLocaleString()}
-    </span>
-    <span className={`text-xs mt-0.5 ${selected ? 'text-indigo-500' : 'text-gray-500'}`}>
-      {pkg.tokens} tokens
-    </span>
-  </button>
-);
 
 // ── Pending pulse animation ───────────────────────────────────────────────────
 
@@ -109,7 +73,6 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   const [phoneDisplay, setPhoneDisplay] = useState('');
   const [phoneError,   setPhoneError]   = useState<string | null>(null);
   const [customAmount, setCustomAmount] = useState('');
-  const [selectedPkg,  setSelectedPkg]  = useState<TokenPackage | null>(null);
 
   const {
     step, amountKes, phone, paymentIntentId,
@@ -121,7 +84,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   };
 
   // ── Polling ───────────────────────────────────────────────────────────────
-  const { status: pollStatus, receipt, tokensAdded } = usePaymentPolling(
+  const { receipt, tokensAdded } = usePaymentPolling(
     step === 'pending' ? paymentIntentId : null,
     handlePollComplete,
   );
@@ -149,15 +112,8 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     }
   }, [setPhone]);
 
-  const handlePackageSelect = useCallback((pkg: TokenPackage) => {
-    setSelectedPkg(pkg);
-    setCustomAmount('');
-    setAmountKes(pkg.amountKes);
-  }, [setAmountKes]);
-
   const handleCustomAmount = useCallback((val: string) => {
     setCustomAmount(val);
-    setSelectedPkg(null);
     const n = parseInt(val, 10);
     setAmountKes(isNaN(n) ? 0 : n);
   }, [setAmountKes]);
@@ -167,7 +123,6 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     setPhoneDisplay('');
     setPhoneError(null);
     setCustomAmount('');
-    setSelectedPkg(null);
     onClose();
   }, [reset, onClose]);
 
@@ -178,31 +133,13 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       setPhoneDisplay('');
       setPhoneError(null);
       setCustomAmount('');
-      setSelectedPkg(null);
     }
   }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Step: FORM ─────────────────────────────────────────────────────────────
   const renderForm = () => (
     <div className="space-y-6">
-      {/* Token packages */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
-          Quick Select
-        </p>
-        <div className="grid grid-cols-4 gap-2">
-          {TOKEN_PACKAGES.map((pkg) => (
-            <PackageChip
-              key={pkg.id}
-              pkg={pkg}
-              selected={selectedPkg?.id === pkg.id}
-              onClick={() => handlePackageSelect(pkg)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Custom amount */}
+      {/* Amount input */}
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-2">
           Amount (KES)
@@ -234,24 +171,21 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         )}
       </div>
 
-      {/* Phone number */}
+      {/* Phone number — no +254 prefix, plain input */}
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-2">
           M-Pesa Number
         </label>
         <div className="relative">
-          <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-            <span className="text-lg">🇰🇪</span>
-            <span className="text-sm font-semibold text-gray-500">+254</span>
-          </div>
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg select-none">🇰🇪</span>
           <input
             type="tel"
             inputMode="numeric"
             maxLength={13}
             value={phoneDisplay}
             onChange={(e) => handlePhoneChange(e.target.value)}
-            placeholder="07XX XXX XXX"
-            className={`w-full pl-[4.5rem] pr-4 py-3.5 border-2 rounded-2xl text-gray-900 font-medium placeholder:text-gray-300 focus:ring-4 outline-none transition-all ${
+            placeholder="01xxxxxxxx / 07xxxxxxxx"
+            className={`w-full pl-10 pr-10 py-3.5 border-2 rounded-2xl text-gray-900 font-medium placeholder:text-gray-300 focus:ring-4 outline-none transition-all ${
               phoneError
                 ? 'border-red-400 focus:border-red-400 focus:ring-red-400/10'
                 : phone && !phoneError
@@ -385,31 +319,25 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         </p>
       </div>
 
-      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-5 border border-green-100 text-left space-y-2.5">
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Tokens added</span>
-          <span className="font-bold text-green-700 text-base">
-            +{(effectiveTokens || 0).toLocaleString()} tokens
-          </span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Amount paid</span>
-          <span className="font-semibold text-gray-800">
-            KES {amountKes.toLocaleString()}
-          </span>
-        </div>
-        {receipt && (
-          <div className="flex justify-between text-sm pt-2 border-t border-green-100">
-            <span className="text-gray-500">M-Pesa Receipt</span>
-            <span className="font-mono text-xs text-gray-700">{receipt}</span>
+      {effectiveTokens > 0 && (
+        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-5 border border-indigo-100">
+          <div className="flex items-center justify-center gap-2">
+            <Wallet className="w-5 h-5 text-indigo-500" />
+            <span className="text-2xl font-bold text-indigo-700">
+              +{effectiveTokens.toLocaleString()} tokens
+            </span>
           </div>
-        )}
-      </div>
+          <p className="text-sm text-gray-500 mt-1">added to your wallet</p>
+          {receipt && (
+            <p className="text-xs text-gray-400 mt-2">Receipt: {receipt}</p>
+          )}
+        </div>
+      )}
 
       <button
         type="button"
         onClick={handleClose}
-        className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold hover:shadow-lg transition-all"
+        className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-200 hover:shadow-xl transition-all"
       >
         Done
       </button>
@@ -419,28 +347,15 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   // ── Step: FAILED ───────────────────────────────────────────────────────────
   const renderFailed = () => (
     <div className="text-center py-6 space-y-5">
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-        className="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mx-auto"
-      >
+      <div className="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mx-auto">
         <XCircle className="w-12 h-12 text-red-500" />
-      </motion.div>
-
+      </div>
       <div>
-        <h3 className="text-xl font-bold text-gray-900">Payment Not Completed</h3>
-        <p className="text-gray-500 text-sm mt-2 leading-relaxed">
-          The payment was{' '}
-          {pollStatus === 'cancelled' ? 'cancelled' : 'declined'}.
-          {' '}No money has been deducted from your M-Pesa.
+        <h3 className="text-xl font-bold text-gray-900">Payment Failed</h3>
+        <p className="text-gray-500 text-sm mt-2">
+          The payment was not completed. You have not been charged.
         </p>
       </div>
-
-      <div className="bg-red-50 border border-red-100 rounded-2xl p-4 text-sm text-red-700 text-left">
-        Common reasons: wrong PIN, insufficient M-Pesa balance, or request timed out.
-      </div>
-
       <div className="flex gap-3">
         <button
           type="button"
@@ -451,14 +366,8 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         </button>
         <button
           type="button"
-          onClick={() => {
-            reset();
-            setPhoneDisplay('');
-            setPhoneError(null);
-            setCustomAmount('');
-            setSelectedPkg(null);
-          }}
-          className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-semibold flex items-center justify-center gap-2 hover:shadow-lg transition-all"
+          onClick={() => { reset(); setCustomAmount(''); setPhoneDisplay(''); setPhoneError(null); }}
+          className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-semibold shadow-md shadow-indigo-200 hover:shadow-lg transition-all flex items-center justify-center gap-2"
         >
           <RefreshCw className="w-4 h-4" />
           Try Again
@@ -473,159 +382,121 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       <div className="w-24 h-24 bg-amber-100 rounded-full flex items-center justify-center mx-auto">
         <Clock className="w-12 h-12 text-amber-500" />
       </div>
-
       <div>
         <h3 className="text-xl font-bold text-gray-900">Request Timed Out</h3>
-        <p className="text-gray-500 text-sm mt-2 leading-relaxed">
-          We didn't receive confirmation from M-Pesa. If money was deducted,
-          it will be refunded automatically within 24 hours.
+        <p className="text-gray-500 text-sm mt-2">
+          The M-Pesa prompt expired. You have not been charged.
         </p>
       </div>
-
-      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800 text-left">
-        <p className="font-semibold mb-1">What happened?</p>
-        <p>The STK Push may have expired before you entered your PIN, or there was a network delay.</p>
-      </div>
-
       <div className="flex gap-3">
         <button
           type="button"
           onClick={handleClose}
           className="flex-1 py-3 border-2 border-gray-200 text-gray-700 rounded-2xl font-semibold hover:bg-gray-50 transition-colors"
         >
-          Close
+          Cancel
         </button>
         <button
           type="button"
-          onClick={() => {
-            reset();
-            setPhoneDisplay('');
-            setPhoneError(null);
-            setCustomAmount('');
-            setSelectedPkg(null);
-          }}
-          className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl font-semibold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors"
+          onClick={() => { reset(); setCustomAmount(''); setPhoneDisplay(''); setPhoneError(null); }}
+          className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-semibold shadow-md shadow-indigo-200 hover:shadow-lg transition-all flex items-center justify-center gap-2"
         >
           <RefreshCw className="w-4 h-4" />
-          Retry
+          Try Again
         </button>
       </div>
     </div>
   );
 
-  // ── Step content router ────────────────────────────────────────────────────
-  const stepContent = () => {
-    switch (step) {
-      case 'form':    return renderForm();
-      case 'pending': return renderPending();
-      case 'success': return renderSuccess();
-      case 'failed':  return renderFailed();
-      case 'timeout': return renderTimeout();
-      default:        return renderForm();
-    }
-  };
-
-  const stepLabel: Record<string, string> = {
-    form:    'Top Up Wallet',
-    confirm: 'Confirm Payment',
-    pending: 'Processing Payment',
-    success: 'Payment Complete',
-    failed:  'Payment Failed',
-    timeout: 'Payment Timed Out',
-  };
-
-  // ── Prevent close during pending ─────────────────────────────────────────
-  const safeClose = () => {
-    if (step === 'pending') return; // don't allow close while STK is live
-    handleClose();
-  };
+  // ── Render ─────────────────────────────────────────────────────────────────
+  if (!isOpen) return null;
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm"
-          onClick={safeClose}
-        >
+        <>
+          {/* Backdrop */}
           <motion.div
-            initial={{ y: 60, opacity: 0, scale: 0.97 }}
-            animate={{ y: 0,  opacity: 1, scale: 1 }}
-            exit={{   y: 60, opacity: 0, scale: 0.97 }}
-            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[95vh] overflow-y-auto"
-          >
-            {/* Drag handle (mobile) */}
-            <div className="sm:hidden flex justify-center pt-3 pb-1">
-              <div className="w-10 h-1 bg-gray-200 rounded-full" />
-            </div>
+            key="backdrop"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={step === 'form' ? handleClose : undefined}
+          />
 
-            {/* Header */}
-            <div className="sticky top-0 bg-white z-10 px-6 pt-4 pb-4 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {(step === 'form') && (
-                  <div className="w-9 h-9 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center">
+          {/* Modal — outer div handles centering; Framer Motion div handles animation */}
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none">
+          <motion.div
+            key="modal"
+            className="w-full max-w-md pointer-events-auto"
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 40 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+          >
+            <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
                     <Wallet className="w-5 h-5 text-white" />
                   </div>
+                  <h2 className="text-lg font-bold text-gray-900">Top Up Wallet</h2>
+                </div>
+                {step !== 'pending' && (
+                  <button
+                    type="button"
+                    onClick={handleClose}
+                    className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+                    aria-label="Close"
+                  >
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
                 )}
-                <h2 className="text-lg font-bold text-gray-900">
-                  {stepLabel[step] || 'Top Up Wallet'}
-                </h2>
               </div>
-              <button
-                type="button"
-                onClick={safeClose}
-                disabled={step === 'pending'}
-                className="p-2 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                aria-label="Close"
-              >
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
 
-            {/* Step progress dots */}
-            {(step === 'form' || step === 'pending') && (
-              <div className="flex items-center gap-2 px-6 pt-3">
-                {['form', 'pending'].map((s) => (
-                  <div
-                    key={s}
-                    className={`h-1 flex-1 rounded-full transition-all duration-500 ${
-                      s === step ? 'bg-indigo-600' : step === 'pending' ? 'bg-indigo-200' : 'bg-gray-200'
-                    }`}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Body */}
-            <div className="px-6 py-5">
-              <AnimatePresence mode="wait">
+              {/* Progress indicator */}
+              <div className="h-0.5 bg-gray-100">
                 <motion.div
-                  key={step}
-                  initial={{ opacity: 0, x: 16 }}
-                  animate={{ opacity: 1, x: 0  }}
-                  exit={{   opacity: 0, x: -16 }}
-                  transition={{ duration: 0.18 }}
-                >
-                  {stepContent()}
-                </motion.div>
-              </AnimatePresence>
-            </div>
+                  className="h-full bg-gradient-to-r from-indigo-500 to-purple-600"
+                  animate={{
+                    width: step === 'form' ? '33%' : step === 'pending' ? '66%' : '100%',
+                  }}
+                  transition={{ duration: 0.4 }}
+                />
+              </div>
 
-            {/* M-Pesa trust badge */}
-            {step === 'form' && (
-              <div className="px-6 pb-5">
-                <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
+              {/* Content */}
+              <div className="px-6 py-6">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={step}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    {step === 'form'    && renderForm()}
+                    {step === 'pending' && renderPending()}
+                    {step === 'success' && renderSuccess()}
+                    {step === 'failed'  && renderFailed()}
+                    {step === 'timeout' && renderTimeout()}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+
+              {/* Footer trust badge */}
+              {step === 'form' && (
+                <div className="px-6 pb-6 flex items-center justify-center gap-1.5 text-xs text-gray-400">
                   <Shield className="w-3.5 h-3.5" />
                   Payments secured by Safaricom M-Pesa
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </motion.div>
-        </motion.div>
+          </div>
+        </>
       )}
     </AnimatePresence>
   );

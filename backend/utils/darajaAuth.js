@@ -1,23 +1,20 @@
+'use strict';
+
 /**
  * backend/utils/darajaAuth.js
  *
  * Daraja OAuth 2.0 Access Token Manager
  * ─────────────────────────────────────────────────────────────────────────────
- * • Fetches a Safaricom Daraja access token via client_credentials grant
- * • Caches the token in memory for 55 minutes (token TTL is 3600s / 60 min)
- * • Never regenerates a token unnecessarily
- * • Thread-safe refresh via in-flight promise deduplication
- * • Never logs or exposes the consumer secret or raw token in production
+ * Fix: logger.js exports { logger, ... } — was imported as the whole object,
+ * so logger.info was undefined. Destructured correctly now.
  */
 
-'use strict';
-
 const axios = require('axios');
-const logger = require('./logger');
+const { logger } = require('./logger'); // ← FIX: was `require('./logger')` (the object)
 
 // ── In-memory token cache ─────────────────────────────────────────────────────
-let _cachedToken = null;     // { value: string, expiresAt: Date }
-let _refreshPromise = null;  // deduplicate concurrent refresh calls
+let _cachedToken    = null;   // { value: string, expiresAt: Date }
+let _refreshPromise = null;   // deduplicate concurrent refresh calls
 
 /** Token lifetime in ms — 55 min, leaving a 5-min safety window before the
  *  Safaricom 60-min hard expiry. */
@@ -53,8 +50,10 @@ async function _fetchFreshToken() {
   const url  = `${baseURL}/oauth/v1/generate?grant_type=client_credentials`;
   const auth = _buildBasicAuth();
 
-  logger.info({ event: 'daraja_token_fetch', url: url.replace(baseURL, '[BASE]') },
-    'Fetching Daraja access token');
+  logger.info(
+    { event: 'daraja_token_fetch', url: url.replace(baseURL, '[BASE]') },
+    'Fetching Daraja access token',
+  );
 
   const response = await axios.get(url, {
     headers: {
@@ -66,7 +65,9 @@ async function _fetchFreshToken() {
 
   const token = response.data?.access_token;
   if (!token) {
-    throw new Error(`Daraja token response missing access_token: ${JSON.stringify(response.data)}`);
+    throw new Error(
+      `Daraja token response missing access_token: ${JSON.stringify(response.data)}`,
+    );
   }
 
   _cachedToken = {
@@ -74,8 +75,10 @@ async function _fetchFreshToken() {
     expiresAt: new Date(Date.now() + TOKEN_TTL_MS),
   };
 
-  logger.info({ event: 'daraja_token_cached', expiresAt: _cachedToken.expiresAt },
-    'Daraja access token cached');
+  logger.info(
+    { event: 'daraja_token_cached', expiresAt: _cachedToken.expiresAt },
+    'Daraja access token cached',
+  );
 
   return token;
 }
@@ -85,19 +88,14 @@ async function _fetchFreshToken() {
 /**
  * Returns a valid Daraja access token.
  * Uses the cached value when still within the 55-minute window.
- * Concurrent callers share a single in-flight refresh promise to prevent
- * hammering the Safaricom OAuth endpoint.
- *
- * @returns {Promise<string>} A valid bearer token
+ * Concurrent callers share a single in-flight refresh promise.
  */
 async function getAccessToken() {
-  // Fast path: use cached token
   if (_isTokenValid()) {
     logger.debug({ event: 'daraja_token_cache_hit' }, 'Returning cached Daraja token');
     return _cachedToken.value;
   }
 
-  // Slow path: refresh, deduplicated
   if (!_refreshPromise) {
     _refreshPromise = _fetchFreshToken().finally(() => {
       _refreshPromise = null;
@@ -108,8 +106,7 @@ async function getAccessToken() {
 }
 
 /**
- * Force-invalidate the cached token (e.g., after a 401 from Safaricom).
- * The next call to getAccessToken() will trigger a fresh fetch.
+ * Force-invalidate the cached token (e.g. after a 401 from Safaricom).
  */
 function invalidateToken() {
   logger.warn({ event: 'daraja_token_invalidated' }, 'Daraja token cache invalidated');
