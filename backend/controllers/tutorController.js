@@ -8,6 +8,9 @@
 
 const supabase = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
+const {
+  getTutorQualificationStatus,
+} = require('../services/tutorQualificationService');
 
 const displayName = (profile) => [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
 
@@ -69,24 +72,28 @@ exports.searchTutors = asyncHandler(async (req, res) => {
     return (b.rating_avg || 0) - (a.rating_avg || 0);
   });
 
-  const formatted = results.map(t => ({
-    id:           t.user_id,
-    firstName:    t.profiles?.first_name,
-    lastName:     t.profiles?.last_name,
-    name:         displayName(t.profiles),
-    bio:          t.bio,
-    hourlyRate:   t.hourly_rate_tokens,
-    rating:       t.rating_avg,
-    totalReviews: t.total_reviews,
-    isVerified:   t.is_verified,
-    // ── Fix: was missing — caused normalizeTutor to always default to true ──
-    isAvailable:  t.is_available ?? false,
-    rankReason:   hasFilter ? 'filtered' : 'rating',
-    subjects:     t.subjects?.map(s => ({
-      id:   s.subjects.id,
-      name: s.subjects.name,
-      code: s.subjects.code
-    })) || []
+  const formatted = await Promise.all(results.map(async t => {
+    const qualification = await getTutorQualificationStatus(t.user_id);
+    return {
+      id:           t.user_id,
+      firstName:    t.profiles?.first_name,
+      lastName:     t.profiles?.last_name,
+      name:         displayName(t.profiles),
+      bio:          t.bio,
+      hourlyRate:   qualification.qualified ? t.hourly_rate_tokens : 0,
+      listedHourlyRate: t.hourly_rate_tokens,
+      rating:       qualification.averageRating,
+      totalReviews: t.total_reviews,
+      isVerified:   t.is_verified,
+      isAvailable:  t.is_available ?? false,
+      qualification,
+      rankReason:   hasFilter ? 'filtered' : 'rating',
+      subjects:     t.subjects?.map(s => ({
+        id:   s.subjects.id,
+        name: s.subjects.name,
+        code: s.subjects.code
+      })) || []
+    };
   }));
 
   res.json({ success: true, data: formatted });
@@ -116,6 +123,8 @@ exports.getTutorById = asyncHandler(async (req, res) => {
     .order('created_at', { ascending: false })
     .limit(5);
 
+  const qualification = await getTutorQualificationStatus(id);
+
   res.json({
     success: true,
     data: {
@@ -124,12 +133,13 @@ exports.getTutorById = asyncHandler(async (req, res) => {
       lastName:     tutor.profiles?.last_name,
       name:         displayName(tutor.profiles),
       bio:          tutor.bio,
-      hourlyRate:   tutor.hourly_rate_tokens,
-      rating:       tutor.rating_avg,
+      hourlyRate:   qualification.qualified ? tutor.hourly_rate_tokens : 0,
+      listedHourlyRate: tutor.hourly_rate_tokens,
+      rating:       qualification.averageRating,
       totalReviews: tutor.total_reviews,
       isVerified:   tutor.is_verified,
-      // ── Fix: was missing — caused profile modal to always show "Available" ──
       isAvailable:  tutor.is_available ?? false,
+      qualification,
       subjects:     tutor.subjects?.map(s => ({
         id:   s.subjects.id,
         name: s.subjects.name,
@@ -286,20 +296,92 @@ exports.getMyProfile = asyncHandler(async (req, res) => {
 
   if (error || !profile) throw new AppError('Tutor profile not found', 404);
 
+  const qualification = await getTutorQualificationStatus(userId);
+
   res.json({
     success: true,
     data: {
       id:          profile.user_id,
       bio:         profile.bio,
       hourlyRate:  profile.hourly_rate_tokens,
-      rating:      profile.rating_avg,
+      rating:      qualification.averageRating,
       totalReviews: profile.total_reviews,
       isAvailable: profile.is_available ?? false,
       isVerified:  profile.is_verified,
       firstName:   profile.profiles?.first_name,
       lastName:    profile.profiles?.last_name,
       email:       profile.profiles?.email,
+      qualification,
     }
+  });
+});
+
+exports.getMyQualification = asyncHandler(async (req, res) => {
+  const qualification = await getTutorQualificationStatus(req.user.id);
+  res.json({ success: true, data: qualification });
+});
+
+exports.getTutorQualification = asyncHandler(async (req, res) => {
+  const qualification = await getTutorQualificationStatus(req.params.id);
+  res.json({ success: true, data: qualification });
+});
+
+exports.updateProfile = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const { bio, hourlyRate, subjects } = req.body;
+  const qualification = await getTutorQualificationStatus(userId);
+
+  const updates = { updated_at: new Date().toISOString() };
+  if (bio !== undefined) {
+    const cleanBio = String(bio).trim();
+    if (cleanBio.length < 10) throw new AppError('Bio must be at least 10 characters', 400, 'VALIDATION_ERROR');
+    updates.bio = cleanBio;
+  }
+
+  if (hourlyRate !== undefined) {
+    if (!qualification.qualified) {
+      throw new AppError(
+        'You unlock paid tutoring after 30 session hours, 20 student reviews, and maintaining a 3.0+ rating.',
+        403,
+        'TUTOR_PAYMENT_LOCKED'
+      );
+    }
+    const rate = Number(hourlyRate);
+    if (!Number.isFinite(rate) || rate <= 0) {
+      throw new AppError('Hourly rate must be a positive number', 400, 'VALIDATION_ERROR');
+    }
+    updates.hourly_rate_tokens = rate;
+  }
+
+  const { error } = await supabase
+    .from('tutor_profiles')
+    .update(updates)
+    .eq('user_id', userId);
+
+  if (error) throw new AppError('Failed to update tutor profile', 500);
+
+  if (subjects !== undefined) {
+    if (!Array.isArray(subjects)) {
+      throw new AppError('subjects must be an array of subject IDs', 400, 'VALIDATION_ERROR');
+    }
+
+    const { error: deleteError } = await supabase
+      .from('tutor_subjects')
+      .delete()
+      .eq('tutor_id', userId);
+    if (deleteError) throw new AppError('Failed to update tutor subjects', 500);
+
+    if (subjects.length) {
+      const rows = subjects.map((subjectId) => ({ tutor_id: userId, subject_id: subjectId }));
+      const { error: insertError } = await supabase.from('tutor_subjects').insert(rows);
+      if (insertError) throw new AppError('Failed to update tutor subjects', 500);
+    }
+  }
+
+  res.json({
+    success: true,
+    message: 'Tutor profile updated',
+    data: { qualification },
   });
 });
 

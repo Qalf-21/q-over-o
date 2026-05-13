@@ -1,14 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// src/features/dashboard/components/TopNavbar.tsx  (UPDATED)
+// src/features/dashboard/components/TopNavbar.tsx
 //
-// Added:
-//   • Live token balance display with deposit CTA in the header
-//   • onDeposit callback prop
+// Fix: tutors in "Learn" mode (/dashboard/learn/*) now see the token balance
+//      and "+ Add" button, since they can also book and pay other tutors.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState } from 'react';
 import { Bell, Menu, Plus, Zap } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import type { User } from '../../auth/types';
 import { walletApi } from '../../../api/walletApi';
 
@@ -25,14 +24,21 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   onDeposit,
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const unreadCount = 0; // TODO: wire notifications context
   const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
   const initial = user?.firstName?.[0] || 'U';
+
+  const isTutor = user?.role === 'tutor';
+  // Tutors browsing /dashboard/learn/* are acting as learners — show the wallet UI
+  const isLearningMode = location.pathname.startsWith('/dashboard/learn');
+  const showWallet = !isTutor || isLearningMode;
 
   const [balance,    setBalance]    = useState<number | null>(null);
   const [isFetching, setIsFetching] = useState(false);
 
   useEffect(() => {
+    if (!showWallet) return; // no need to fetch if we won't display it
     let cancelled = false;
     const load = async () => {
       try {
@@ -47,7 +53,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
     };
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [showWallet]);
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-20">
@@ -65,8 +71,8 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
 
         {/* Right */}
         <div className="flex items-center gap-3">
-          {/* Token balance + quick deposit */}
-          {user?.role !== 'tutor' && (
+          {/* Token balance + quick deposit — shown to tutees AND tutors in learn mode */}
+          {showWallet && (
             <div className="hidden sm:flex items-center gap-2 bg-indigo-50 rounded-xl px-3 py-1.5">
               <Zap className="w-3.5 h-3.5 text-indigo-500" />
               {isFetching ? (
@@ -114,7 +120,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                 {displayName}
               </p>
               <p className="text-xs text-gray-500">
-                {user?.role === 'tutor' ? 'Tutor account' : 'Tutee account'}
+                {isTutor ? 'Tutor account' : 'Tutee account'}
               </p>
             </div>
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-400 flex items-center justify-center text-white font-bold shadow-md ring-2 ring-transparent group-hover:ring-indigo-300 transition-all">

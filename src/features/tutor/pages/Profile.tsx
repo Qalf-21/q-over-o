@@ -369,6 +369,8 @@ export const Profile: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   const isTutor = user?.role === 'tutor';
+  const qualification = profile?.tutorProfile?.qualification;
+  const isPaidTutoringUnlocked = qualification?.qualified ?? false;
   const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
   const initial = initials(user?.firstName, user?.lastName);
 
@@ -470,7 +472,7 @@ export const Profile: React.FC = () => {
       setTutorSettingsError('Bio cannot be empty');
       return;
     }
-    if (isNaN(rate) || rate <= 0) {
+    if (isPaidTutoringUnlocked && (isNaN(rate) || rate <= 0)) {
       setTutorSettingsError('Hourly rate must be a positive number');
       return;
     }
@@ -484,7 +486,7 @@ export const Profile: React.FC = () => {
       setTutorSettingsError(null);
       await tutorApi.updateProfile({
         bio: tutorSettings.bio.trim(),
-        hourlyRate: rate,
+        ...(isPaidTutoringUnlocked ? { hourlyRate: rate } : {}),
         subjects: tutorSettings.subjects.map((s) => s.id),
       });
       await fetchProfile();
@@ -798,10 +800,18 @@ export const Profile: React.FC = () => {
                 <FieldRow
                   label="Hourly Rate"
                   value={
-                    <span className="flex items-center gap-1.5 font-semibold text-indigo-700">
-                      <span className="text-gray-400 font-normal">$</span>
-                      {profile?.tutorProfile?.hourly_rate_tokens ?? '—'}{' '}
-                      <span className="text-gray-400 font-normal text-xs">tokens / hr</span>
+                    <span className="flex items-center gap-2 font-semibold text-indigo-700">
+                      {isPaidTutoringUnlocked ? (
+                        <>
+                          {profile?.tutorProfile?.hourly_rate_tokens ?? '—'}{' '}
+                          <span className="text-gray-400 font-normal text-xs">tokens / hr</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="h-4 w-4 text-gray-400" />
+                          <span className="text-gray-500">Locked until paid tutoring unlocks</span>
+                        </>
+                      )}
                     </span>
                   }
                 />
@@ -819,8 +829,36 @@ export const Profile: React.FC = () => {
                 />
                 <FieldRow
                   label="Sessions Taught"
-                  value={profile?.tutorProfile?.total_sessions ?? 0}
+                  value={qualification?.completedSessions ?? profile?.tutorProfile?.total_sessions ?? 0}
                 />
+
+                {qualification && !qualification.qualified && (
+                  <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-gray-900">Paid tutoring progress</p>
+                        <p className="mt-1 text-xs text-indigo-800">
+                          You unlock paid tutoring after: 30 session hours, 20 student reviews,
+                          and maintaining a 3.0+ rating.
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-white px-3 py-1 text-sm font-bold text-indigo-700">
+                        {qualification.progressPercentage}%
+                      </span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-white">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-emerald-500"
+                        style={{ width: `${qualification.progressPercentage}%` }}
+                      />
+                    </div>
+                    <div className="mt-3 grid gap-2 text-xs text-gray-600 sm:grid-cols-3">
+                      <span>{qualification.hoursRemaining.toFixed(1)} hours remaining</span>
+                      <span>{qualification.reviewersRemaining} more reviews needed</span>
+                      <span>Current rating: {qualification.averageRating.toFixed(1)} / 5</span>
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-5 pt-4 border-t border-gray-50">
                   <button
@@ -856,13 +894,21 @@ export const Profile: React.FC = () => {
                   <input
                     type="number"
                     min="1"
+                    disabled={!isPaidTutoringUnlocked}
                     value={tutorSettings.hourlyRate}
                     onChange={(e) =>
                       setTutorSettings((prev) => ({ ...prev, hourlyRate: e.target.value }))
                     }
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
                     placeholder="e.g. 500"
                   />
+                  {!isPaidTutoringUnlocked && (
+                    <p className="mt-1.5 flex items-center gap-1.5 text-xs text-indigo-700">
+                      <Lock className="h-3.5 w-3.5" />
+                      You unlock paid tutoring after: 30 session hours, 20 student reviews,
+                      and maintaining a 3.0+ rating.
+                    </p>
+                  )}
                 </div>
 
                 {/* Subjects */}

@@ -1,13 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// src/features/dashboard/components/DashboardLayout.tsx  (UPDATED)
+// src/features/dashboard/components/DashboardLayout.tsx
 //
-// Changes from original:
-//   • Wraps children in <ToastProvider>
-//   • Passes onDeposit to TopNavbar so the global + Add CTA works
-//   • Renders <DepositModal> at layout level (tutees only)
+// Fix: tutors browsing /dashboard/learn/* also get the deposit modal wired up,
+//      since they can book and pay other tutors just like tutees can.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TopNavbar } from './TopNavbar';
 import { useAuth } from '../../../shared/hooks/useAuth';
@@ -16,14 +15,20 @@ import { DepositModal } from '../../wallet/components/DepositModal';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
+  user?: unknown;
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const { user } = useAuth();
+  const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showDeposit,   setShowDeposit]   = useState(false);
 
-  const isTutee = user?.role !== 'tutor';
+  const isTutor = user?.role === 'tutor';
+  const isLearningMode = location.pathname.startsWith('/dashboard/learn');
+
+  // Show the deposit flow for tutees always, and for tutors when they're in learn mode
+  const canDeposit = !isTutor || isLearningMode;
 
   return (
     <ToastProvider>
@@ -53,7 +58,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
           <TopNavbar
             user={user}
             onMenuClick={() => setIsSidebarOpen(true)}
-            onDeposit={isTutee ? () => setShowDeposit(true) : undefined}
+            onDeposit={canDeposit ? () => setShowDeposit(true) : undefined}
           />
 
           <main className="flex-1 overflow-y-auto">
@@ -63,8 +68,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
           </main>
         </div>
 
-        {/* Global deposit modal (tutees only) */}
-        {isTutee && (
+        {/* Global deposit modal — available to tutees and tutors in learn mode */}
+        {canDeposit && (
           <DepositModal
             isOpen={showDeposit}
             onClose={() => setShowDeposit(false)}

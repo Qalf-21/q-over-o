@@ -24,12 +24,14 @@ export const normalizeTutor = (tutor: any): TutorSearchResult => ({
   bio:           tutor.bio || '',
   subjects:      (tutor.subjects || []).map(normalizeSubject),
   hourlyRate:    tutor.hourlyRate ?? tutor.hourly_rate_tokens ?? 0,
+  listedHourlyRate: tutor.listedHourlyRate ?? tutor.listed_hourly_rate ?? tutor.hourly_rate_tokens,
   rating:        tutor.rating ?? tutor.rating_avg ?? 0,
   totalReviews:  tutor.totalReviews ?? tutor.total_reviews ?? 0,
   totalSessions: tutor.totalSessions ?? tutor.total_sessions ?? 0,
   // ── Fix: was `?? true` — masked every tutor's real availability status ──────
   isAvailable:   tutor.isAvailable ?? tutor.is_available ?? false,
-  nextAvailable: tutor.nextAvailable ?? tutor.next_available
+  nextAvailable: tutor.nextAvailable ?? tutor.next_available,
+  qualification: tutor.qualification
 });
 
 export const tutorApi = {
@@ -58,6 +60,10 @@ export const tutorApi = {
 
   async getMyProfile() {
     return apiRequest('/tutors/profile/me', { method: 'GET' });
+  },
+
+  async getMyQualification() {
+    return apiRequest('/tutors/qualification/me', { method: 'GET' });
   },
 
   async updateProfile(profile: { bio?: string; hourlyRate?: number; subjects?: string[] }) {

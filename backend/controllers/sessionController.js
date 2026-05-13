@@ -11,6 +11,8 @@
 
 const supabase = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
+const { getTutorQualificationStatus } = require('../services/tutorQualificationService');
+const { generateMeetingLink } = require('../utils/meetingGenerator');
 
 const displayName = (profile) => [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
 
@@ -76,6 +78,56 @@ const trimAvailabilitySlot = async (tutorId, slotId, sessionStart, sessionEnd) =
   }
 };
 
+const createFreeSession = async ({ tuteeId, tutorId, subjectId, startTime, endTime, notes }) => {
+  const basePayload = {
+    tutee_id: tuteeId,
+    tutor_id: tutorId,
+    subject_id: subjectId,
+    start_time: startTime,
+    end_time: endTime,
+    status: 'pending',
+    notes: notes || null,
+  };
+
+  const payloads = [
+    { ...basePayload, token_amount: 0 },
+    { ...basePayload, amount_tokens: 0 },
+    { ...basePayload, cost_tokens: 0 },
+    basePayload,
+  ];
+
+  let session = null;
+  let error = null;
+  for (const payload of payloads) {
+    const result = await supabase
+      .from('sessions')
+      .insert(payload)
+      .select('id')
+      .single();
+    session = result.data;
+    error = result.error;
+    if (!error && session) break;
+  }
+
+  if (error || !session) {
+    throw new AppError(`Free session booking failed: ${error?.message || 'unknown error'}`, 500, 'FREE_BOOKING_FAILED');
+  }
+
+  const meetingLink = generateMeetingLink(session.id);
+  const meetingUpdate = await supabase
+    .from('sessions')
+    .update({ meeting_url: meetingLink })
+    .eq('id', session.id);
+  if (meetingUpdate.error) {
+    await supabase
+      .from('sessions')
+      .update({ meeting_link: meetingLink })
+      .eq('id', session.id);
+  }
+
+  return session.id;
+};
+
 // ── bookSession ────────────────────────────────────────────────────────────────
 exports.bookSession = asyncHandler(async (req, res) => {
   const {
@@ -128,17 +180,32 @@ exports.bookSession = asyncHandler(async (req, res) => {
     }
   }
 
-  // ── Atomic booking (escrow + session insert) ─────────────────────────────────
-  const { data, error } = await supabase.rpc('book_session_atomic', {
-    p_tutee_id: req.user.id,
-    p_tutor_id: tutor_id,
-    p_subject_id: subject_id,
-    p_start: start_time,
-    p_end: end_time,
-  });
+  const qualification = await getTutorQualificationStatus(tutor_id);
+  let sessionId;
 
-  if (error) {
-    throw new AppError(error.message, 400);
+  if (qualification.qualified) {
+    // ── Atomic booking (escrow + session insert) ───────────────────────────────
+    const { data, error } = await supabase.rpc('book_session_atomic', {
+      p_tutee_id: req.user.id,
+      p_tutor_id: tutor_id,
+      p_subject_id: subject_id,
+      p_start: start_time,
+      p_end: end_time,
+    });
+
+    if (error) {
+      throw new AppError(error.message, 400);
+    }
+    sessionId = data;
+  } else {
+    sessionId = await createFreeSession({
+      tuteeId: req.user.id,
+      tutorId: tutor_id,
+      subjectId: subject_id,
+      startTime: start_time,
+      endTime: end_time,
+      notes,
+    });
   }
 
   // ── Trim the availability slot (best-effort, non-blocking) ───────────────────
@@ -153,7 +220,13 @@ exports.bookSession = asyncHandler(async (req, res) => {
 
   res.status(201).json({
     success: true,
-    session_id: data,
+    session_id: sessionId,
+    data: {
+      sessionId,
+      paymentLocked: !qualification.qualified,
+      tokenAmount: qualification.qualified ? undefined : 0,
+      qualification,
+    },
   });
 });
 

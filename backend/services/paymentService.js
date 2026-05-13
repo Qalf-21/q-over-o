@@ -62,9 +62,9 @@ class PaymentService {
     const normalisedPhone = normalizePhoneOrThrow(phoneNumber, AppError);
 
     // ── 2. Validate amount ─────────────────────────────────────────────────────
-    const parsedAmount = parseInt(amountKes, 10);
-    if (isNaN(parsedAmount) || parsedAmount < 10) {
-      throw new AppError('Minimum purchase is KES 10', 400, 'AMOUNT_TOO_LOW');
+    const parsedAmount = Number(amountKes);
+    if (!Number.isInteger(parsedAmount) || parsedAmount < 1) {
+      throw new AppError('Minimum purchase is KES 1', 400, 'AMOUNT_TOO_LOW');
     }
     if (parsedAmount > 150_000) {
       throw new AppError('Maximum single purchase is KES 150,000', 400, 'AMOUNT_TOO_HIGH');
@@ -272,7 +272,7 @@ class PaymentService {
    * Safe to call from client polling.
    */
   async checkPaymentStatus(paymentIntentId, userId) {
-    const { data: intent, error } = require('../config/supabase')
+    const { data: intent, error } = await require('../config/supabase')
       .from('payment_intents')
       .select('id, status, tokens_expected, mpesa_receipt_number, created_at, updated_at')
       .eq('id', paymentIntentId)
@@ -284,6 +284,60 @@ class PaymentService {
     }
 
     return intent;
+  }
+
+  async reconcilePendingIntent(intent, correlationId) {
+    if (!intent?.checkout_request_id || !['pending', 'processing'].includes(intent.status)) {
+      return intent;
+    }
+
+    const queryResult = await queryStkStatus(intent.checkout_request_id, correlationId);
+
+    if (queryResult.status === 'pending') {
+      return intent;
+    }
+
+    if (queryResult.status === 'failed') {
+      await markFailed({
+        paymentIntentId: intent.id,
+        resultCode: queryResult.resultCode,
+        resultDescription: queryResult.resultDesc,
+        callbackPayload: { source: 'stk_query_reconciliation', queryResult },
+        correlationId,
+      });
+      return {
+        ...intent,
+        status: 'failed',
+        result_description: queryResult.resultDesc,
+        updated_at: new Date().toISOString(),
+      };
+    }
+
+    if (intent.status === 'pending') {
+      await markProcessing(intent.id, correlationId);
+    }
+
+    const syntheticReceipt = `STK-${intent.checkout_request_id.slice(-12)}`;
+    await completePaymentAtomic({
+      paymentIntentId: intent.id,
+      mpesaReceiptNumber: syntheticReceipt,
+      resultCode: queryResult.resultCode,
+      resultDescription: `${queryResult.resultDesc} (reconciled via STK query)`,
+      callbackPayload: {
+        source: 'stk_query_reconciliation',
+        checkoutRequestId: intent.checkout_request_id,
+        queryResult,
+      },
+      correlationId,
+    });
+
+    return {
+      ...intent,
+      status: 'completed',
+      mpesa_receipt_number: syntheticReceipt,
+      result_description: queryResult.resultDesc,
+      updated_at: new Date().toISOString(),
+    };
   }
 }
 

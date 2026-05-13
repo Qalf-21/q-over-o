@@ -8,7 +8,7 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Star, CheckCircle2, XCircle } from 'lucide-react';
+import { Star, CheckCircle2, XCircle, Lock } from 'lucide-react';
 import type { TutorSearchResult } from '../../../types/tutor';
 
 interface TutorCardProps {
@@ -18,6 +18,8 @@ interface TutorCardProps {
 }
 
 export const TutorCard: React.FC<TutorCardProps> = ({ tutor, onViewProfile, onBook }) => {
+  const isPaymentLocked = tutor.qualification ? !tutor.qualification.qualified : tutor.hourlyRate <= 0;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -69,8 +71,20 @@ export const TutorCard: React.FC<TutorCardProps> = ({ tutor, onViewProfile, onBo
 
       <div className="flex items-center justify-between pt-4 border-t border-gray-100">
         <div>
-          <div className="text-2xl font-bold text-indigo-600">{tutor.hourlyRate}</div>
-          <div className="text-xs text-gray-500">tokens/hour</div>
+          {isPaymentLocked ? (
+            <>
+              <div className="flex items-center gap-1 text-sm font-bold text-indigo-600">
+                <Lock className="h-4 w-4" />
+                Free
+              </div>
+              <div className="text-xs text-gray-500">paid rate locked</div>
+            </>
+          ) : (
+            <>
+              <div className="text-2xl font-bold text-indigo-600">{tutor.hourlyRate}</div>
+              <div className="text-xs text-gray-500">tokens/hour</div>
+            </>
+          )}
         </div>
 
         <div className="flex gap-2">

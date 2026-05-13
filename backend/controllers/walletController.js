@@ -119,7 +119,7 @@ exports.purchaseTokens = asyncHandler(async (req, res) => {
 
   const result = await paymentService.purchaseTokens({
     userId,
-    amountKes:   parseInt(amountKes, 10),
+    amountKes,
     phoneNumber,
     correlationId,
   });
@@ -145,7 +145,7 @@ exports.getPurchaseStatus = asyncHandler(async (req, res) => {
 
   const { data: intent, error } = await supabase
     .from('payment_intents')
-    .select('id, status, tokens_expected, mpesa_receipt_number, created_at, updated_at, result_description')
+    .select('id, status, tokens_expected, mpesa_receipt_number, checkout_request_id, created_at, updated_at, result_description')
     .eq('id', intentId)
     .eq('user_id', userId)
     .single();
@@ -154,7 +154,22 @@ exports.getPurchaseStatus = asyncHandler(async (req, res) => {
     throw new AppError('Payment intent not found', 404, 'NOT_FOUND');
   }
 
-  res.json({ success: true, data: intent });
+  let currentIntent = intent;
+  if (['pending', 'processing'].includes(intent.status)) {
+    try {
+      currentIntent = await paymentService.reconcilePendingIntent(
+        intent,
+        req.correlationId || uuidv4(),
+      );
+    } catch (reconcileError) {
+      logger.warn(
+        { event: 'payment_status_reconcile_failed', intentId, err: reconcileError.message },
+        'Payment status reconciliation failed; returning stored status',
+      );
+    }
+  }
+
+  res.json({ success: true, data: currentIntent });
 });
 
 // ── M-Pesa Callback Handler ───────────────────────────────────────────────────

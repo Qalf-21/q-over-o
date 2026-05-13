@@ -53,7 +53,7 @@ export interface Earnings {
 
 export interface Transaction {
   id: string;
-  type: 'credit' | 'debit';
+  type: 'deposit' | 'escrow' | 'release' | 'withdrawal' | 'refund' | 'credit' | 'debit';
   amount: number;
   description: string;
   status: 'pending' | 'completed' | 'failed';

@@ -16,7 +16,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Calendar, Clock, CreditCard, AlertCircle, CheckCircle2,
-  Loader2, BookOpen,
+  Loader2, BookOpen, Lock,
 } from 'lucide-react';
 import type { TutorSearchResult, BookingRequest } from '../../../types/tutor';
 import { sessionApi } from '../../../api/sessionApi';
@@ -151,7 +151,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   if (currentUserId && currentUserId === tutor.id) return null;
 
   // ── Derived values ──────────────────────────────────────────────────────────
-  const totalCost = Math.round(tutor.hourlyRate * (duration / 60));
+  const isPaymentLocked = tutor.qualification ? !tutor.qualification.qualified : tutor.hourlyRate <= 0;
+  const totalCost = isPaymentLocked ? 0 : Math.round(tutor.hourlyRate * (duration / 60));
   const hasEnoughTokens = userTokens >= totalCost;
 
   const startOptions = selectedSlot ? buildStartOptions(selectedSlot, duration) : [];
@@ -277,7 +278,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">Book with {tutor.name}</h2>
                   <p className="text-sm text-gray-500">
-                    {tutor.subjects[0]?.name ?? 'Tutoring'} • {tutor.hourlyRate} tokens/hr
+                    {tutor.subjects[0]?.name ?? 'Tutoring'} • {isPaymentLocked ? 'Free until paid tutoring unlocks' : `${tutor.hourlyRate} tokens/hr`}
                   </p>
                 </div>
               </div>
@@ -432,8 +433,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 {/* Cost summary */}
                 {selectedSlot && (
                   <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+                    {isPaymentLocked && (
+                      <div className="mb-3 flex items-start gap-2 rounded-xl border border-indigo-100 bg-white px-3 py-2 text-indigo-700">
+                        <Lock className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                        <span>
+                          You unlock paid tutoring after: 30 session hours, 20 student reviews,
+                          and maintaining a 3.0+ rating.
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-600">{duration} min @ {tutor.hourlyRate} tokens/hr</span>
+                      <span className="text-gray-600">
+                        {duration} min {isPaymentLocked ? 'qualification session' : `@ ${tutor.hourlyRate} tokens/hr`}
+                      </span>
                       <span className="font-semibold">{totalCost} tokens</span>
                     </div>
                     <div className="flex justify-between items-center pt-2 border-t border-gray-200">
@@ -459,7 +471,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <CreditCard className="w-12 h-12 text-indigo-600 mx-auto mb-3" />
                   <h3 className="font-bold text-gray-900 mb-2">Confirm Payment</h3>
                   <p className="text-gray-600 text-sm">
-                    {totalCost} tokens will be held in escrow and released when the session completes.
+                    {isPaymentLocked
+                      ? 'This booking is free while the tutor completes paid-tutoring requirements.'
+                      : `${totalCost} tokens will be held in escrow and released when the session completes.`}
                   </p>
                   <p className="text-sm text-gray-500 mt-2">
                     Balance after booking:{' '}
@@ -481,7 +495,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     ['Duration',  `${duration} minutes`],
                     ['Subject',   tutor.subjects[0]?.name ?? 'General'],
                     ['Topic',     topic],
-                    ['Cost',      `${totalCost} tokens`],
+                    ['Cost',      isPaymentLocked ? 'Free' : `${totalCost} tokens`],
                   ].map(([label, value]) => (
                     <div key={label} className="flex justify-between">
                       <span className="text-gray-500">{label}</span>

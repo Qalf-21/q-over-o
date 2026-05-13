@@ -13,6 +13,9 @@ const {
   getTutorAvailability,
   getMyAvailability,
   getMyProfile,
+  getMyQualification,
+  getTutorQualification,
+  updateProfile,
   createAvailability,
   deleteAvailability,
   toggleAvailability,          // ← new
@@ -35,7 +38,8 @@ router.get('/subjects', getSubjects);
 
 router.post('/become',               authMiddleware, becomeTutor);
 router.get('/profile/me',            authMiddleware, requireTutor, getMyProfile);
-//router.put('/profile',               authMiddleware, requireTutor, updateProfile);
+router.get('/qualification/me',      authMiddleware, requireTutor, getMyQualification);
+router.put('/profile',               authMiddleware, requireTutor, updateProfile);
 //router.get('/dashboard/stats',       authMiddleware, requireTutor, getDashboardStats);
 //router.delete('/application',        authMiddleware, revertTutorApplication);
 
@@ -48,6 +52,7 @@ router.delete('/availability/:slotId', authMiddleware, requireTutor, deleteAvail
 
 // ── Wildcard public routes (after all specific paths) ─────────────────────────
 router.get('/:id',                 getTutorById);
+router.get('/:id/qualification',    getTutorQualification);
 router.get('/:id/reviews',         getTutorReviews);
 router.get('/:id/availability',    getTutorAvailability);
 

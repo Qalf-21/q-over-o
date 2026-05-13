@@ -38,7 +38,7 @@ export const Earnings: React.FC = () => {
     .filter(transaction => transaction.type === 'credit' && transaction.status === 'pending')
     .reduce((sum, transaction) => sum + transaction.amount, 0);
 
-  const tokenToKes = (tokens: number) => tokens * 2; // 1 token = 2 KES
+  const tokenToKes = (tokens: number) => tokens / 10;
 
   return (
     <div className="space-y-8">

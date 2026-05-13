@@ -1,6 +1,7 @@
 // src/api/profileApi.ts
 import { apiRequest } from './client';
 import type { ApiResponse } from './client';
+import type { TutorQualification } from '../types/tutor';
 
 export interface ProfileData {
   id: string;
@@ -24,6 +25,7 @@ export interface ProfileData {
     /** Sourced from a joined aggregate, not the tutor_profiles column */
     total_sessions?: number;
     is_available?: boolean;
+    qualification?: TutorQualification;
   } | null;
 }
 

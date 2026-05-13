@@ -154,7 +154,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
             max={MAX_DEPOSIT_KES}
             value={customAmount || (amountKes > 0 ? String(amountKes) : '')}
             onChange={(e) => handleCustomAmount(e.target.value)}
-            placeholder="Enter amount"
+            placeholder="KES 50 = 500 tokens"
             className="w-full pl-14 pr-4 py-3.5 border-2 border-gray-200 rounded-2xl text-gray-900 font-semibold text-lg placeholder:text-gray-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all"
           />
           {amountKes > 0 && (
@@ -169,6 +169,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         {amountKes > 0 && amountKes < MIN_DEPOSIT_KES && (
           <p className="text-xs text-red-500 mt-1">Minimum deposit is KES {MIN_DEPOSIT_KES}</p>
         )}
+        <p className="text-xs text-gray-400 mt-1.5">1 KES = 10 tokens. Minimum top-up is KES 1.</p>
       </div>
 
       {/* Phone number — no +254 prefix, plain input */}
@@ -228,7 +229,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
           </div>
           <div className="mt-2 pt-2 border-t border-indigo-100 flex items-center gap-1.5 text-xs text-gray-500">
             <Shield className="w-3.5 h-3.5 text-indigo-400" />
-            Secured via Safaricom M-Pesa STK Push
+            KES {amountKes.toLocaleString()} = {kesToTokens(amountKes).toLocaleString()} tokens via M-Pesa STK Push
           </div>
         </motion.div>
       )}

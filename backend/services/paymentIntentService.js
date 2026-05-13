@@ -42,10 +42,9 @@ function assertTransition(from, to) {
 }
 
 // ── Token conversion ──────────────────────────────────────────────────────────
-/** 1 KES = 1 token (adjust this ratio via env if pricing changes) */
+/** 1 KES = 10 tokens. */
 function kesToTokens(amountKes) {
-  const ratio = parseFloat(process.env.TOKEN_CONVERSION_RATE || '1');
-  return Math.floor(amountKes * ratio);
+  return Math.floor(amountKes * 10);
 }
 
 // ── Create ────────────────────────────────────────────────────────────────────
@@ -243,6 +242,21 @@ async function completePaymentAtomic({
   });
 
   if (rpcError) {
+    if (rpcError.code === 'PGRST202') {
+      logger.warn(
+        { event: 'atomic_credit_rpc_missing_fallback', paymentIntentId, correlationId },
+        'Payment credit RPC missing — using service-role DB fallback',
+      );
+      return completePaymentDirectDb({
+        intent,
+        mpesaReceiptNumber,
+        resultCode,
+        resultDescription,
+        callbackPayload,
+        correlationId,
+      });
+    }
+
     logger.error(
       { event: 'atomic_credit_failed', rpcError, paymentIntentId, correlationId },
       'Atomic wallet credit RPC failed',
@@ -263,6 +277,95 @@ async function completePaymentAtomic({
     tokensAdded:  rpcResult.tokens_added,
     newBalance:   rpcResult.new_balance,
     duplicate:    false,
+  };
+}
+
+async function completePaymentDirectDb({
+  intent,
+  mpesaReceiptNumber,
+  resultCode,
+  resultDescription,
+  callbackPayload,
+  correlationId,
+}) {
+  const { data: existingWallet, error: walletFetchError } = await supabase
+    .from('wallets')
+    .select('balance_tokens, total_deposited_kes')
+    .eq('user_id', intent.user_id)
+    .maybeSingle();
+
+  if (walletFetchError) {
+    throw new AppError(`Wallet fetch failed: ${walletFetchError.message}`, 500, 'WALLET_FETCH_ERROR');
+  }
+
+  const currentBalance = existingWallet?.balance_tokens || 0;
+  const newBalance = currentBalance + intent.tokens_expected;
+  const walletPayload = {
+    balance_tokens: newBalance,
+    total_deposited_kes: (existingWallet?.total_deposited_kes || 0) + (intent.amount_kes || 0),
+    updated_at: new Date().toISOString(),
+  };
+
+  const walletResult = existingWallet
+    ? await supabase.from('wallets').update(walletPayload).eq('user_id', intent.user_id)
+    : await supabase.from('wallets').insert({ user_id: intent.user_id, ...walletPayload });
+
+  if (walletResult.error) {
+    throw new AppError(`Wallet credit failed: ${walletResult.error.message}`, 500, 'WALLET_CREDIT_FAILED');
+  }
+
+  const { error: intentUpdateError } = await supabase
+    .from('payment_intents')
+    .update({
+      status: 'completed',
+      mpesa_receipt_number: mpesaReceiptNumber,
+      result_code: String(resultCode),
+      result_description: resultDescription,
+      callback_payload: callbackPayload,
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', intent.id);
+
+  if (intentUpdateError) {
+    throw new AppError(`Payment intent completion failed: ${intentUpdateError.message}`, 500, 'INTENT_UPDATE_FAILED');
+  }
+
+  const transactionPayload = {
+    user_id: intent.user_id,
+    type: 'credit',
+    amount_tokens: intent.tokens_expected,
+    balance_after: newBalance,
+    status: 'success',
+    reference: mpesaReceiptNumber,
+    description: `Wallet top-up: KES ${intent.amount_kes} = ${intent.tokens_expected} tokens`,
+    created_at: new Date().toISOString(),
+  };
+
+  const { error: transactionError } = await supabase
+    .from('transactions')
+    .insert(transactionPayload);
+
+  if (transactionError) {
+    logger.error(
+      { event: 'transaction_insert_failed_after_wallet_credit', transactionError, intentId: intent.id, correlationId },
+      'Wallet was credited but transaction log insert failed',
+    );
+  }
+
+  auditWallet({
+    event: 'wallet_credited_direct_db',
+    paymentIntentId: intent.id,
+    userId: intent.user_id,
+    tokensAdded: intent.tokens_expected,
+    mpesaReceiptNumber,
+    correlationId,
+  });
+
+  return {
+    tokensAdded: intent.tokens_expected,
+    newBalance,
+    duplicate: false,
   };
 }
 

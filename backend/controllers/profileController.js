@@ -2,6 +2,7 @@
 // FIXED: removed total_sessions from tutor_profiles select (column does not exist)
 const supabase = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
+const { getTutorQualificationStatus } = require('../services/tutorQualificationService');
 
 // GET /api/profile/me
 exports.getProfile = asyncHandler(async (req, res) => {
@@ -21,6 +22,7 @@ exports.getProfile = asyncHandler(async (req, res) => {
   // If tutor, pull tutor-specific stats (only columns that exist in tutor_profiles)
   let tutorStats = null;
   if (profile.role === 'tutor' || profile.is_tutor) {
+    const qualification = await getTutorQualificationStatus(userId);
     const { data: tp } = await supabase
       .from('tutor_profiles')
       .select('bio, hourly_rate_tokens, rating_avg, total_reviews, is_verified')
@@ -34,7 +36,8 @@ exports.getProfile = asyncHandler(async (req, res) => {
           rating_avg:         tp.rating_avg,
           total_reviews:      tp.total_reviews,
           is_verified:        tp.is_verified,
-          // total_sessions does not exist in tutor_profiles — omit it
+          qualification,
+          total_sessions:      qualification.completedSessions,
         }
       : null;
   }

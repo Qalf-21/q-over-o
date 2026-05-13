@@ -4,15 +4,15 @@
 
 import type { TokenPackage } from '../../../types/wallet';
 
-/** 1 KES = 0.5 tokens  →  1 token = 2 KES */
-export const KES_PER_TOKEN = 2;
+/** 1 KES = 10 tokens. */
+export const TOKENS_PER_KES = 10;
 
 export function kesToTokens(kes: number): number {
-  return Math.floor(kes / KES_PER_TOKEN);
+  return Math.floor(kes * TOKENS_PER_KES);
 }
 
 export function tokensToKes(tokens: number): number {
-  return tokens * KES_PER_TOKEN;
+  return tokens / TOKENS_PER_KES;
 }
 
 export const TOKEN_PACKAGES: TokenPackage[] = [
@@ -20,13 +20,13 @@ export const TOKEN_PACKAGES: TokenPackage[] = [
     id: 'starter',
     label: 'Starter',
     amountKes: 100,
-    tokens: 50,
+    tokens: 1000,
   },
   {
     id: 'boost',
     label: 'Boost',
     amountKes: 300,
-    tokens: 150,
+    tokens: 3000,
     badge: 'Popular',
     badgeColor: 'indigo',
   },
@@ -34,7 +34,7 @@ export const TOKEN_PACKAGES: TokenPackage[] = [
     id: 'power',
     label: 'Power',
     amountKes: 500,
-    tokens: 250,
+    tokens: 5000,
     badge: 'Best Value',
     badgeColor: 'green',
   },
@@ -42,11 +42,11 @@ export const TOKEN_PACKAGES: TokenPackage[] = [
     id: 'pro',
     label: 'Pro',
     amountKes: 1000,
-    tokens: 500,
+    tokens: 10000,
   },
 ];
 
-export const MIN_DEPOSIT_KES = 10;
+export const MIN_DEPOSIT_KES = 1;
 export const MAX_DEPOSIT_KES = 70000;
 
 /** Polling config */

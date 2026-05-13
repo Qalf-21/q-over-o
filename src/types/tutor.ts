@@ -12,6 +12,26 @@ export interface TutorProfile {
   createdAt: string;
 }
 
+export type TutorQualificationState = 'NOT_QUALIFIED' | 'IN_PROGRESS' | 'QUALIFIED';
+
+export interface TutorQualification {
+  state: TutorQualificationState;
+  qualified: boolean;
+  requirements: {
+    hours: number;
+    rating: number;
+    reviewers: number;
+  };
+  hoursCompleted: number;
+  hoursRemaining: number;
+  averageRating: number;
+  ratingRemaining: number;
+  uniqueReviewerCount: number;
+  reviewersRemaining: number;
+  completedSessions: number;
+  progressPercentage: number;
+}
+
 export interface Subject {
   id: string;
   name: string;
@@ -90,11 +110,13 @@ export interface TutorSearchResult {
   bio: string;
   subjects: Subject[];
   hourlyRate: number;
+  listedHourlyRate?: number;
   rating: number;
   totalReviews: number;
   totalSessions: number;
   isAvailable: boolean;
   nextAvailable?: string;
+  qualification?: TutorQualification;
 }
 
 export interface SearchFilters {

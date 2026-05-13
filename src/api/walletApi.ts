@@ -22,7 +22,7 @@ const normalizeTransaction = (t: any): WalletTransaction => ({
   type:         t.type || 'credit',
   amount:       Math.abs(t.amount ?? t.amount_tokens ?? 0),
   description:  t.description || t.reference || t.type || 'Wallet transaction',
-  status:       t.status || 'completed',
+  status:       t.status === 'success' ? 'completed' : (t.status || 'completed'),
   createdAt:    t.createdAt || t.created_at || '',
   sessionId:    t.sessionId || t.session_id,
   mpesaReceipt: t.mpesaReceiptNumber || t.mpesa_receipt_number,
@@ -69,6 +69,10 @@ export const walletApi = {
     return { success: response.success, data: response.data! };
   },
 
+  async purchaseTokens(amountKes: number, phoneNumber: string) {
+    return this.initiateDeposit(amountKes, phoneNumber);
+  },
+
   /**
    * Poll the status of a payment intent.
    *
@@ -78,11 +82,21 @@ export const walletApi = {
   async getPaymentStatus(
     paymentIntentId: string,
   ): Promise<{ success: boolean; data: PaymentStatusResponse }> {
-    const response = await apiRequest<PaymentStatusResponse>(
+    const response = await apiRequest<any>(
       `/wallet/purchase/${paymentIntentId}/status`,
       { method: 'GET' },
     );
-    return { success: response.success, data: response.data! };
+    const raw = response.data || {};
+    return {
+      success: response.success,
+      data: {
+        id: raw.id,
+        status: raw.status,
+        tokensExpected: raw.tokensExpected ?? raw.tokens_expected ?? 0,
+        mpesaReceiptNumber: raw.mpesaReceiptNumber ?? raw.mpesa_receipt_number,
+        updatedAt: raw.updatedAt ?? raw.updated_at,
+      },
+    };
   },
 
   /**
