@@ -1,35 +1,57 @@
-import { apiRequest } from './client';
-import type { AdminLog, AdminOverview, AdminTableRow } from '../features/admin/types/admin';
+// src/api/adminApi.ts — FULL REPLACEMENT
+//
+// Adds getAdminFullOverview() for the new rich admin dashboard.
+// All existing methods kept intact.
 
-const rows = (response: { data?: AdminTableRow[] }) => response.data || [];
+import { apiRequest } from './client';
+import type {
+  AdminFullOverview,
+  AdminLog,
+  AdminOverview,
+  AdminTableRow,
+} from '../features/admin/types/admin';
 
 export const adminApi = {
-  async getOverview() {
-    return apiRequest<AdminOverview>('/admin/overview', { method: 'GET' });
+  // ── New full overview endpoint ──────────────────────────────────────────────
+  async getAdminFullOverview(): Promise<AdminFullOverview> {
+    const response = await apiRequest<AdminFullOverview>('/admin/overview/full');
+    if (!response.data) throw new Error('No data returned from admin overview');
+    return response.data;
   },
 
-  async getUsers() {
-    return rows(await apiRequest<AdminTableRow[]>('/admin/users', { method: 'GET' }));
+  // ── Legacy thin overview ───────────────────────────────────────────────────
+  async getOverview(): Promise<{ data: AdminOverview | null }> {
+    const response = await apiRequest<AdminOverview>('/admin/overview');
+    return { data: response.data ?? null };
   },
 
-  async getTutors() {
-    return rows(await apiRequest<AdminTableRow[]>('/admin/tutors', { method: 'GET' }));
+  async getUsers(): Promise<AdminTableRow[]> {
+    const response = await apiRequest<AdminTableRow[]>('/admin/users');
+    return response.data ?? [];
   },
 
-  async getSessions() {
-    return rows(await apiRequest<AdminTableRow[]>('/admin/sessions', { method: 'GET' }));
+  async getTutors(): Promise<AdminTableRow[]> {
+    const response = await apiRequest<AdminTableRow[]>('/admin/tutors');
+    return response.data ?? [];
   },
 
-  async getWallets() {
-    return rows(await apiRequest<AdminTableRow[]>('/admin/wallets', { method: 'GET' }));
+  async getSessions(): Promise<AdminTableRow[]> {
+    const response = await apiRequest<AdminTableRow[]>('/admin/sessions');
+    return response.data ?? [];
   },
 
-  async getReviews() {
-    return rows(await apiRequest<AdminTableRow[]>('/admin/reviews', { method: 'GET' }));
+  async getWallets(): Promise<AdminTableRow[]> {
+    const response = await apiRequest<AdminTableRow[]>('/admin/wallets');
+    return response.data ?? [];
   },
 
-  async getAuditLogs() {
-    const response = await apiRequest<AdminLog[]>('/admin/audit-logs', { method: 'GET' });
-    return response.data || [];
+  async getReviews(): Promise<AdminTableRow[]> {
+    const response = await apiRequest<AdminTableRow[]>('/admin/reviews');
+    return response.data ?? [];
+  },
+
+  async getAuditLogs(): Promise<AdminLog[]> {
+    const response = await apiRequest<AdminLog[]>('/admin/audit-logs');
+    return response.data ?? [];
   },
 };
