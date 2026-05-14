@@ -1,8 +1,10 @@
 // src/api/tutorApi.ts — FULL REPLACEMENT
 //
-// Fix: normalizeTutor fallback for isAvailable changed from `?? true` → `?? false`
-// Previously every tutor without an explicit is_available value was shown as
-// "Available" regardless of their actual database value.
+// Fixes:
+//   • normalizeTutor: isAvailable fallback changed from `?? true` → `?? false`
+//     (previously masked real availability, showing all tutors as available)
+//   • normalizeSubject: removed reference to `category` field — not in DB schema.
+//     Falls back to `code` to keep the Subject type satisfied without a DB hit.
 
 import { apiRequest } from './client';
 import type { SearchFilters, Subject, TutorSearchResult } from '../types/tutor';
@@ -10,7 +12,8 @@ import type { SearchFilters, Subject, TutorSearchResult } from '../types/tutor';
 const normalizeSubject = (subject: any): Subject => ({
   id:       subject.id,
   name:     subject.name,
-  category: subject.category || subject.code || 'General',
+  // `category` does not exist in the subjects table — use code as fallback
+  category: subject.code || 'General',
   level:    subject.level || 'intermediate'
 });
 
@@ -28,7 +31,6 @@ export const normalizeTutor = (tutor: any): TutorSearchResult => ({
   rating:        tutor.rating ?? tutor.rating_avg ?? 0,
   totalReviews:  tutor.totalReviews ?? tutor.total_reviews ?? 0,
   totalSessions: tutor.totalSessions ?? tutor.total_sessions ?? 0,
-  // ── Fix: was `?? true` — masked every tutor's real availability status ──────
   isAvailable:   tutor.isAvailable ?? tutor.is_available ?? false,
   nextAvailable: tutor.nextAvailable ?? tutor.next_available,
   qualification: tutor.qualification

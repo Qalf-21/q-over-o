@@ -1,6 +1,17 @@
-import React from 'react';
+// src/features/tutee/components/SearchFilters.tsx — FULL REPLACEMENT
+//
+// Fix: Subject dropdown now fetches live data from the database via
+//      tutorApi.getSubjects() instead of using a hardcoded SUBJECTS array.
+
+import React, { useEffect, useState } from 'react';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 import type { SearchFilters as Filters } from '../../../types/tutor';
+import { tutorApi } from '../../../api/tutorApi';
+
+interface SubjectOption {
+  id: string;
+  name: string;
+}
 
 interface SearchFiltersProps {
   filters: Filters;
@@ -8,10 +19,25 @@ interface SearchFiltersProps {
   onClear: () => void;
 }
 
-const SUBJECTS = ['All Subjects', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Programming', 'Calculus', 'Statistics'];
-
 export const SearchFilters: React.FC<SearchFiltersProps> = ({ filters, onChange, onClear }) => {
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const hasActiveFilters = filters.subject || filters.minRating || filters.maxPrice || filters.availableNow;
+
+  useEffect(() => {
+    tutorApi.getSubjects()
+      .then((res) => {
+        // Normalise: backend returns { success, data: [...] }
+        const raw: any[] = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res)
+          ? (res as any)
+          : [];
+        setSubjects(raw.map((s: any) => ({ id: s.id, name: s.name })));
+      })
+      .catch(() => {
+        // Silently fail — dropdown will only show "All Subjects"
+      });
+  }, []);
 
   return (
     <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm space-y-4">
@@ -34,15 +60,16 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({ filters, onChange,
           <span className="text-sm font-medium">Filters:</span>
         </div>
 
-        {/* Subject Dropdown */}
+        {/* Subject Dropdown — live from DB */}
         <select
           value={filters.subject || ''}
           onChange={(e) => onChange({ ...filters, subject: e.target.value || undefined })}
           className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 outline-none bg-white"
         >
-          {SUBJECTS.map(subject => (
-            <option key={subject} value={subject === 'All Subjects' ? '' : subject}>
-              {subject}
+          <option value="">All Subjects</option>
+          {subjects.map((s) => (
+            <option key={s.id} value={s.name}>
+              {s.name}
             </option>
           ))}
         </select>

@@ -4,7 +4,8 @@
 //   • searchTutors:  formatted response now includes `isAvailable: t.is_available`
 //                    + availableNow filter is now actually applied
 //   • getTutorById:  response now includes `isAvailable: tutor.is_available`
-// All other functions unchanged.
+//   • getSubjects:   removed non-existent `category` column from select (was silently
+//                    failing, causing tutor profile subject search to return nothing)
 
 const supabase = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
@@ -442,12 +443,13 @@ exports.updateProfile = asyncHandler(async (req, res) => {
   });
 });
 
-
-
+// ── FIX: removed `category` from select — column does not exist in subjects table.
+// Selecting a non-existent column causes Supabase to error, which was silently
+// caught in the frontend, leaving the subject dropdown and tutor profile search empty.
 exports.getSubjects = asyncHandler(async (req, res) => {
   const { data: subjects, error } = await supabase
     .from('subjects')
-    .select('id, name, code, category')
+    .select('id, name, code')
     .order('name');
 
   if (error) throw new AppError('Failed to fetch subjects', 500);
