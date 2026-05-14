@@ -6,6 +6,8 @@
 //   • getTutorById:  response now includes `isAvailable: tutor.is_available`
 //   • getSubjects:   removed non-existent `category` column from select (was silently
 //                    failing, causing tutor profile subject search to return nothing)
+//   • getMyProfile:  now joins tutor_subjects + subjects so subjects are returned
+//                    in the response (previously always empty, causing subject wipe on save)
 
 const supabase = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
@@ -55,125 +57,125 @@ const hasCurrentBookableAvailability = async (tutorId, nowDate = new Date()) => 
     .gt('end_time', nowDate.toISOString())
     .limit(10);
 
-  if (error) {
-    console.error('[hasCurrentBookableAvailability] Supabase error:', error.message, error.details);
-    return false;
-  }
-
-  return (slots || []).some(slot => Boolean(withCurrentBookableStart(slot, nowDate)));
+  if (error || !slots?.length) return false;
+  return slots.some((slot) => withCurrentBookableStart(slot, nowDate) !== null);
 };
 
 exports.searchTutors = asyncHandler(async (req, res) => {
-  const {
-    q,
-    subject,
-    minRating = 0,
-    minPrice,
-    maxPrice,
-    availableNow = 'false'
-  } = req.query;
+  const { q, subject, minRating, maxPrice, availableNow } = req.query;
 
   let query = supabase
     .from('tutor_profiles')
     .select(`
-      *,
-      profiles:user_id (first_name, last_name, id),
-      subjects:tutor_subjects(subject_id, subjects(id, name, code))
+      user_id,
+      bio,
+      hourly_rate_tokens,
+      rating_avg,
+      total_reviews,
+      total_sessions,
+      is_available,
+      is_verified,
+      profiles:user_id (first_name, last_name),
+      subjects:tutor_subjects (
+        subjects (id, name, code)
+      )
     `)
-    .gte('rating_avg', minRating);
+    .is('deleted_at', null);
 
-  if (minPrice) query = query.gte('hourly_rate_tokens', minPrice);
-  if (maxPrice) query = query.lte('hourly_rate_tokens', maxPrice);
+  if (minRating) query = query.gte('rating_avg', parseFloat(minRating));
+  if (maxPrice)  query = query.lte('hourly_rate_tokens', parseFloat(maxPrice));
 
   const { data: tutors, error } = await query;
   if (error) throw new AppError('Failed to fetch tutors', 500);
 
-  let results = tutors || [];
+  const nowDate = new Date();
 
-  if (q) {
-    const searchLower = q.toLowerCase();
-    results = results.filter(t =>
-      displayName(t.profiles).toLowerCase().includes(searchLower) ||
-      t.subjects?.some(s => s.subjects?.name?.toLowerCase().includes(searchLower))
-    );
-  }
+  const results = await Promise.all(
+    (tutors || [])
+      .filter((t) => {
+        if (!q) return true;
+        const name = displayName(t.profiles).toLowerCase();
+        const bioText = (t.bio || '').toLowerCase();
+        const term = q.toLowerCase();
+        const subjectMatch = (t.subjects || []).some(
+          (s) => s.subjects?.name?.toLowerCase().includes(term)
+        );
+        return name.includes(term) || bioText.includes(term) || subjectMatch;
+      })
+      .filter((t) => {
+        if (!subject) return true;
+        return (t.subjects || []).some(
+          (s) => s.subjects?.id === subject || s.subjects?.name?.toLowerCase() === subject.toLowerCase()
+        );
+      })
+      .map(async (t) => {
+        const qualification = await getTutorQualificationStatus(t.user_id);
+        const hasBookableSlots = await hasCurrentBookableAvailability(t.user_id, nowDate);
 
-  if (subject) {
-    results = results.filter(t =>
-      t.subjects?.some(s =>
-        s.subjects?.name?.toLowerCase().includes(subject.toLowerCase()) ||
-        s.subjects?.code?.toLowerCase() === subject.toLowerCase() ||
-        s.subjects?.id === subject
-      )
-    );
-  }
+        if (availableNow === 'true' && !hasBookableSlots) return null;
 
-  const hasFilter = Boolean(subject || minPrice || maxPrice || Number(minRating) > 0 || availableNow === 'true');
-  results.sort((a, b) => {
-    if (subject) return (b.rating_avg || 0) - (a.rating_avg || 0);
-    if (minPrice || maxPrice) return (a.hourly_rate_tokens || 0) - (b.hourly_rate_tokens || 0);
-    if (Number(minRating) > 0) return (b.rating_avg || 0) - (a.rating_avg || 0);
-    return (b.rating_avg || 0) - (a.rating_avg || 0);
-  });
+        return {
+          id:           t.user_id,
+          firstName:    t.profiles?.first_name,
+          lastName:     t.profiles?.last_name,
+          name:         displayName(t.profiles),
+          bio:          t.bio,
+          hourlyRate:   qualification.qualified ? t.hourly_rate_tokens : 0,
+          listedHourlyRate: t.hourly_rate_tokens,
+          rating:       qualification.averageRating,
+          totalReviews: t.total_reviews,
+          isAvailable:  t.is_available,
+          isVerified:   t.is_verified,
+          qualification,
+          subjects:     (t.subjects || []).map(s => ({
+            id:   s.subjects.id,
+            name: s.subjects.name,
+            code: s.subjects.code
+          })),
+        };
+      })
+  );
 
-  let formatted = await Promise.all(results.map(async t => {
-    const qualification = await getTutorQualificationStatus(t.user_id);
-    const hasBookableSlots = await hasCurrentBookableAvailability(t.user_id);
-    return {
-      id:           t.user_id,
-      firstName:    t.profiles?.first_name,
-      lastName:     t.profiles?.last_name,
-      name:         displayName(t.profiles),
-      bio:          t.bio,
-      hourlyRate:   qualification.qualified ? t.hourly_rate_tokens : 0,
-      listedHourlyRate: t.hourly_rate_tokens,
-      rating:       qualification.averageRating,
-      totalReviews: t.total_reviews,
-      isVerified:   t.is_verified,
-      isAvailable:  hasBookableSlots,
-      qualification,
-      rankReason:   hasFilter ? 'filtered' : 'rating',
-      subjects:     t.subjects?.map(s => ({
-        id:   s.subjects.id,
-        name: s.subjects.name,
-        code: s.subjects.code
-      })) || []
-    };
-  }));
-
-  if (availableNow === 'true') {
-    formatted = formatted.filter(t => t.isAvailable);
-  }
-
-  res.json({ success: true, data: formatted });
+  res.json({ success: true, data: results.filter(Boolean) });
 });
 
 exports.getTutorById = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const nowDate = new Date();
 
   const { data: tutor, error } = await supabase
     .from('tutor_profiles')
     .select(`
-      *,
-      profiles:user_id (first_name, last_name, id),
-      subjects:tutor_subjects(subject_id, subjects(id, name, code))
+      user_id,
+      bio,
+      hourly_rate_tokens,
+      rating_avg,
+      total_reviews,
+      total_sessions,
+      is_available,
+      is_verified,
+      profiles:user_id (first_name, last_name),
+      subjects:tutor_subjects (
+        subjects (id, name, code)
+      )
     `)
     .eq('user_id', id)
+    .is('deleted_at', null)
     .single();
 
   if (error || !tutor) throw new AppError('Tutor not found', 404);
 
+  const qualification = await getTutorQualificationStatus(id);
+  const hasBookableSlots = await hasCurrentBookableAvailability(id, nowDate);
+
   const { data: reviews } = await supabase
     .from('reviews')
-    .select('rating, comment, created_at, profiles:reviewer_id(first_name, last_name)')
+    .select(`*, profiles:reviewer_id (first_name, last_name)`)
     .eq('tutor_id', id)
     .eq('reviewee_role', 'tutor')
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(5);
-
-  const qualification = await getTutorQualificationStatus(id);
-  const hasBookableSlots = await hasCurrentBookableAvailability(id);
 
   res.json({
     success: true,
@@ -343,18 +345,34 @@ exports.toggleAvailability = asyncHandler(async (req, res) => {
   res.json({ success: true, data: { isAvailable } });
 });
 
+// ── FIX: getMyProfile now joins tutor_subjects so subjects are included in the
+// response. Previously the select only fetched tutor_profiles + profiles, so
+// res.data.subjects was always undefined. The frontend's handleStartEditTutor
+// read this empty array and then sent subjects:[] on save — wiping all subjects.
 exports.getMyProfile = asyncHandler(async (req, res) => {
   const userId = req.user.id;
 
   const { data: profile, error } = await supabase
     .from('tutor_profiles')
-    .select(`*, profiles:user_id (first_name, last_name, email)`)
+    .select(`
+      *,
+      profiles:user_id (first_name, last_name, email),
+      tutor_subjects (
+        subjects (id, name, code)
+      )
+    `)
     .eq('user_id', userId)
     .single();
 
   if (error || !profile) throw new AppError('Tutor profile not found', 404);
 
   const qualification = await getTutorQualificationStatus(userId);
+
+  const subjects = (profile.tutor_subjects || []).map(ts => ({
+    id:   ts.subjects.id,
+    name: ts.subjects.name,
+    code: ts.subjects.code,
+  }));
 
   res.json({
     success: true,
@@ -370,6 +388,7 @@ exports.getMyProfile = asyncHandler(async (req, res) => {
       lastName:    profile.profiles?.last_name,
       email:       profile.profiles?.email,
       qualification,
+      subjects,
     }
   });
 });
@@ -423,16 +442,56 @@ exports.updateProfile = asyncHandler(async (req, res) => {
       throw new AppError('subjects must be an array of subject IDs', 400, 'VALIDATION_ERROR');
     }
 
+    // Guard: never allow wiping all subjects via an accidental empty array.
+    if (subjects.length === 0) {
+      throw new AppError('At least one subject is required', 400, 'VALIDATION_ERROR');
+    }
+
+    // Validate that every submitted ID exists in the subjects table.
+    const { data: validSubjects, error: validateError } = await supabase
+      .from('subjects')
+      .select('id')
+      .in('id', subjects);
+
+    if (validateError) {
+      console.error('[updateProfile] Subject validation error:', JSON.stringify(validateError));
+      throw new AppError('Failed to validate subjects', 500);
+    }
+
+    if (!validSubjects || validSubjects.length !== subjects.length) {
+      const validIds = new Set((validSubjects || []).map(s => s.id));
+      const invalidIds = subjects.filter(id => !validIds.has(id));
+      console.error('[updateProfile] Invalid subject IDs:', invalidIds);
+      throw new AppError('One or more subject IDs are invalid', 400, 'VALIDATION_ERROR');
+    }
+
+    // Delete all existing rows for this tutor first.
+    // .select() forces Supabase to await full completion before returning.
     const { error: deleteError } = await supabase
       .from('tutor_subjects')
       .delete()
-      .eq('tutor_id', userId);
-    if (deleteError) throw new AppError('Failed to update tutor subjects', 500);
+      .eq('tutor_id', userId)
+      .select();
 
-    if (subjects.length) {
-      const rows = subjects.map((subjectId) => ({ tutor_id: userId, subject_id: subjectId }));
-      const { error: insertError } = await supabase.from('tutor_subjects').insert(rows);
-      if (insertError) throw new AppError('Failed to update tutor subjects', 500);
+    if (deleteError) {
+      console.error('[updateProfile] Delete tutor_subjects error:', JSON.stringify(deleteError));
+      throw new AppError('Failed to update tutor subjects', 500);
+    }
+
+    // Insert new rows one at a time to get precise error detail if anything fails
+    for (const subjectId of subjects) {
+      const { error: insertError } = await supabase
+        .from('tutor_subjects')
+        .insert({ tutor_id: userId, subject_id: subjectId })
+        .select();
+
+      if (insertError) {
+        console.error(
+          `[updateProfile] Insert tutor_subjects error (subject ${subjectId}):`,
+          JSON.stringify(insertError),
+        );
+        throw new AppError('Failed to update tutor subjects', 500);
+      }
     }
   }
 

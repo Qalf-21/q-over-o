@@ -5,6 +5,23 @@
 //   • Success feedback uses useToast() hook (Toast/ToastState named exports removed)
 //   • SubjectSelector: fixed so it always shows the dropdown (not just on search)
 //   • tutorApi.getSubjects() response normalised correctly
+//
+// BUG FIX — "Failed to update tutor subjects":
+//   Root cause: getMyProfile on the backend did not join tutor_subjects, so
+//   subjects always came back as undefined/[]. handleStartEditTutor opened the
+//   editor with subjects=[] and the first Save wiped all subject rows.
+//
+//   Frontend-side fixes applied here:
+//   1. Added `isLoadingTutorSubjects` state — tracked while the async subject
+//      pre-population fetch is in flight.
+//   2. handleStartEditTutor is now async and awaits the getMyProfile call before
+//      setting isEditingTutor=true, so the form never opens with an empty list.
+//   3. The Save button is disabled while isLoadingTutorSubjects is true as a
+//      belt-and-suspenders guard (backend also guards against subjects:[]).
+//
+//   The matching backend fix (tutorController.js getMyProfile now joins
+//   tutor_subjects) is the primary fix — this frontend change makes it resilient
+//   even on slow networks.
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -341,6 +358,9 @@ export const Profile: React.FC = () => {
 
   // ── Tutor settings edit state ────────────────────────────────────────────
   const [isEditingTutor, setIsEditingTutor] = useState(false);
+  // FIX: track whether the initial subject pre-population fetch is in flight.
+  // While true, the Save button is disabled to prevent saving with subjects=[].
+  const [isLoadingTutorSubjects, setIsLoadingTutorSubjects] = useState(false);
   const [tutorSettings, setTutorSettings] = useState<TutorSettingsState>({
     bio: '',
     hourlyRate: '',
@@ -439,30 +459,38 @@ export const Profile: React.FC = () => {
   };
 
   // ── Tutor settings handlers ───────────────────────────────────────────────
-  const handleStartEditTutor = () => {
+  // FIX: this handler is now async and awaits the subject fetch before opening
+  // the edit form. Previously it fired the fetch as a detached promise and
+  // immediately opened the form with subjects=[], meaning a quick Save would
+  // call updateProfile({ subjects: [] }) and wipe all subject rows.
+  const handleStartEditTutor = async () => {
+    setTutorSettingsError(null);
     setTutorSettings({
       bio: profile?.tutorProfile?.bio ?? '',
       hourlyRate: String(profile?.tutorProfile?.hourly_rate_tokens ?? ''),
       subjects: [],
     });
-    // Pre-populate subjects from the tutor profile endpoint
-    tutorApi.getMyProfile().then((res: any) => {
-      const raw: any[] = Array.isArray(res?.data?.subjects)
-        ? res.data.subjects
-        : [];
-      if (raw.length) {
-        setTutorSettings((prev) => ({
-          ...prev,
-          subjects: raw.map((s: any) => ({ id: s.id, name: s.name, code: s.code })),
-        }));
-      }
-    }).catch(() => {});
-    setTutorSettingsError(null);
+    setIsLoadingTutorSubjects(true);
     setIsEditingTutor(true);
+
+    try {
+      const res: any = await tutorApi.getMyProfile();
+      const raw: any[] = Array.isArray(res?.data?.subjects) ? res.data.subjects : [];
+      setTutorSettings((prev) => ({
+        ...prev,
+        subjects: raw.map((s: any) => ({ id: s.id, name: s.name, code: s.code })),
+      }));
+    } catch {
+      // Non-fatal: tutor can still manually select subjects if pre-population fails.
+      // The empty subjects guard in handleSaveTutorSettings will prevent accidental wipes.
+    } finally {
+      setIsLoadingTutorSubjects(false);
+    }
   };
 
   const handleCancelEditTutor = () => {
     setIsEditingTutor(false);
+    setIsLoadingTutorSubjects(false);
     setTutorSettingsError(null);
   };
 
@@ -915,6 +943,10 @@ export const Profile: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
                     Subjects
+                    {/* FIX: show loading indicator while current subjects are being fetched */}
+                    {isLoadingTutorSubjects && (
+                      <Loader2 className="inline w-3.5 h-3.5 ml-2 text-indigo-400 animate-spin" />
+                    )}
                   </label>
                   <SubjectSelector
                     selected={tutorSettings.subjects}
@@ -934,11 +966,12 @@ export const Profile: React.FC = () => {
                 <div className="flex items-center gap-3 pt-2">
                   <button
                     onClick={handleSaveTutorSettings}
-                    disabled={isSavingTutor}
+                    // FIX: also disable while subjects are loading to prevent accidental wipe
+                    disabled={isSavingTutor || isLoadingTutorSubjects}
                     className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 disabled:opacity-60 transition-all"
                   >
                     {isSavingTutor ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    {isSavingTutor ? 'Saving…' : 'Save Settings'}
+                    {isSavingTutor ? 'Saving…' : isLoadingTutorSubjects ? 'Loading…' : 'Save Settings'}
                   </button>
                   <button
                     onClick={handleCancelEditTutor}
