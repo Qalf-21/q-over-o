@@ -50,6 +50,22 @@ export const adminApi = {
     return response.data ?? [];
   },
 
+  async getSubjectRequests(): Promise<AdminTableRow[]> {
+    const response = await apiRequest<AdminTableRow[]>('/admin/subject-requests');
+    return response.data ?? [];
+  },
+
+  async approveSubjectRequest(id: string) {
+    return apiRequest(`/admin/subject-requests/${id}/approve`, { method: 'POST' });
+  },
+
+  async rejectSubjectRequest(id: string, notes?: string) {
+    return apiRequest(`/admin/subject-requests/${id}/reject`, {
+      method: 'POST',
+      body: { notes },
+    });
+  },
+
   async getAuditLogs(): Promise<AdminLog[]> {
     const response = await apiRequest<AdminLog[]>('/admin/audit-logs');
     return response.data ?? [];

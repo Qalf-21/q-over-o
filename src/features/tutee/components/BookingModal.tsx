@@ -121,6 +121,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [sessionStart, setSessionStart] = useState<string>('');
   const [topic, setTopic] = useState('');
 
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
 
@@ -162,6 +164,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     return () => { cancelled = true; };
   }, [tutor?.id]);
 
+  // Auto-select first subject when tutor loads
+  useEffect(() => {
+    if (tutor?.subjects?.length) {
+      setSelectedSubjectId(tutor.subjects[0].id);
+    } else {
+      setSelectedSubjectId('');
+    }
+  }, [tutor?.id]);
+
   // Reset sessionStart when slot or duration changes
   useEffect(() => {
     if (!selectedSlot) { setSessionStart(''); return; }
@@ -187,6 +198,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     !!selectedSlot &&
     !!effectiveStart &&
     hasEnoughTokens;
+    // Note: selectedSubjectId is optional — backend falls back to first tutor subject
 
   const dateGroups = groupByDate(slots);
   const sortedDates = Object.keys(dateGroups).sort();
@@ -211,10 +223,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     if (!effectiveStart || !effectiveEnd || !selectedSlot) return;
     setIsProcessing(true);
     setBookingError(null);
+    const activeSubject = tutor.subjects?.find(s => s.id === selectedSubjectId)
+      ?? tutor.subjects?.[0];
     try {
       await sessionApi.bookSession({
         tutor_id:   tutor.id,
-        subject_id: tutor.subjects[0]?.id || '',
+        subject_id: activeSubject?.id,  // undefined when no subject — backend resolves
         start_time: effectiveStart,
         end_time:   effectiveEnd,
         notes:      topic,
@@ -223,8 +237,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       await onConfirm({
         tutorId:     tutor.id,
         tutorName:   tutor.name,
-        subjectId:   tutor.subjects[0]?.id || '',
-        subject:     tutor.subjects[0]?.name || 'General',
+        subjectId:   activeSubject?.id || '',
+        subject:     activeSubject?.name || 'General',
         scheduledAt: effectiveStart,
         duration,
         tokenAmount: totalCost,
@@ -438,6 +452,24 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   </div>
                 )}
 
+                {/* Subject selector — shown when tutor has multiple subjects */}
+                {(tutor.subjects?.length ?? 0) > 1 && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Subject
+                    </label>
+                    <select
+                      value={selectedSubjectId}
+                      onChange={e => setSelectedSubjectId(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm bg-white"
+                    >
+                      {tutor.subjects.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 {/* Topic */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -515,7 +547,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     ['Date',      fmtDate(effectiveStart)],
                     ['Time',      `${fmt12(effectiveStart)} – ${fmt12(effectiveEnd)}`],
                     ['Duration',  `${duration} minutes`],
-                    ['Subject',   tutor.subjects[0]?.name ?? 'General'],
+                    ['Subject',   (tutor.subjects?.find(s => s.id === selectedSubjectId) ?? tutor.subjects?.[0])?.name ?? 'General'],
                     ['Topic',     topic],
                     ['Cost',      isPaymentLocked ? 'Free' : `${totalCost} tokens`],
                   ].map(([label, value]) => (
@@ -596,3 +628,5 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     </AnimatePresence>
   );
 };
+
+

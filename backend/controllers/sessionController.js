@@ -1,3 +1,4 @@
+
 // backend/controllers/sessionController.js — FULL REPLACEMENT
 //
 // Changes to bookSession:
@@ -96,7 +97,7 @@ const trimAvailabilitySlot = async (tutorId, slotId, sessionStart, sessionEnd) =
   }
 };
 
-const createFreeSession = async ({ tuteeId, tutorId, subjectId, startTime, endTime, notes }) => {
+const createFreeSession = async ({ tuteeId, tutorId, subjectId, startTime, endTime }) => {
   const basePayload = {
     tutee_id: tuteeId,
     tutor_id: tutorId,
@@ -104,7 +105,6 @@ const createFreeSession = async ({ tuteeId, tutorId, subjectId, startTime, endTi
     start_time: startTime,
     end_time: endTime,
     status: 'pending',
-    notes: notes || null,
   };
 
   const payloads = [
@@ -146,6 +146,51 @@ const createFreeSession = async ({ tuteeId, tutorId, subjectId, startTime, endTi
   return session.id;
 };
 
+const resolveBookingSubjectId = async (tutorId, subjectId) => {
+  const { data: tutorProfile, error: tutorProfileError } = await supabase
+    .from('tutor_profiles')
+    .select('id, user_id')
+    .eq('user_id', tutorId)
+    .maybeSingle();
+
+  if (tutorProfileError) {
+    console.error('[bookSession] tutor profile lookup failed:', JSON.stringify(tutorProfileError));
+    throw new AppError('Failed to validate tutor profile', 500);
+  }
+
+  if (!tutorProfile?.id) {
+    throw new AppError('Tutor profile is not ready for booking', 409, 'TUTOR_PROFILE_NOT_READY');
+  }
+
+  let query = supabase
+    .from('tutor_subjects')
+    .select('subject_id')
+    .eq('tutor_id', tutorProfile.id);
+
+  if (subjectId) {
+    query = query.eq('subject_id', subjectId);
+  }
+
+  const { data, error } = await query.limit(1).maybeSingle();
+
+  if (error) {
+    console.error('[bookSession] subject validation failed:', JSON.stringify(error));
+    throw new AppError('Failed to validate tutor subject', 500);
+  }
+
+  if (!data?.subject_id) {
+    throw new AppError(
+      subjectId
+        ? 'Selected subject is not offered by this tutor'
+        : 'This tutor has no approved subjects available for booking',
+      400,
+      'INVALID_BOOKING_SUBJECT',
+    );
+  }
+
+  return data.subject_id;
+};
+
 // ── bookSession ────────────────────────────────────────────────────────────────
 exports.bookSession = asyncHandler(async (req, res) => {
   const {
@@ -157,9 +202,11 @@ exports.bookSession = asyncHandler(async (req, res) => {
     availability_slot_id,
   } = req.body;
 
-  if (!tutor_id || !subject_id || !start_time || !end_time) {
-    throw new AppError('tutor_id, subject_id, start_time, and end_time are required', 400);
+  if (!tutor_id || !start_time || !end_time) {
+    throw new AppError('tutor_id, start_time, and end_time are required', 400);
   }
+
+  const requestedSubjectId = subject_id && subject_id !== '' ? subject_id : null;
 
   const requestedStart = new Date(start_time);
   const requestedEnd = new Date(end_time);
@@ -181,6 +228,8 @@ exports.bookSession = asyncHandler(async (req, res) => {
   if (req.user.id === tutor_id) {
     throw new AppError('You cannot book a session with yourself', 400);
   }
+
+  const resolvedSubjectId = await resolveBookingSubjectId(tutor_id, requestedSubjectId);
 
   if (availability_slot_id) {
     const { data: slot, error: slotError } = await supabase
@@ -205,6 +254,25 @@ exports.bookSession = asyncHandler(async (req, res) => {
     if (requestedStart < bookableStart || requestedEnd > slotEnd) {
       throw new AppError('Requested session is outside the available time slot', 409);
     }
+  }
+
+  const { data: overlappingSession, error: overlapError } = await supabase
+    .from('sessions')
+    .select('id')
+    .eq('tutor_id', tutor_id)
+    .in('status', ['pending', 'confirmed'])
+    .lt('start_time', requestedEnd.toISOString())
+    .gt('end_time', requestedStart.toISOString())
+    .limit(1)
+    .maybeSingle();
+
+  if (overlapError) {
+    console.error('[bookSession] overlap validation failed:', JSON.stringify(overlapError));
+    throw new AppError('Failed to validate tutor availability', 500);
+  }
+
+  if (overlappingSession) {
+    throw new AppError('This time slot has already been booked', 409, 'SLOT_ALREADY_BOOKED');
   }
 
   // ── Review gate ─────────────────────────────────────────────────────────────
@@ -247,7 +315,7 @@ exports.bookSession = asyncHandler(async (req, res) => {
     const { data, error } = await supabase.rpc('book_session_atomic', {
       p_tutee_id: req.user.id,
       p_tutor_id: tutor_id,
-      p_subject_id: subject_id,
+      p_subject_id: resolvedSubjectId,
       p_start: start_time,
       p_end: end_time,
     });
@@ -260,10 +328,9 @@ exports.bookSession = asyncHandler(async (req, res) => {
     sessionId = await createFreeSession({
       tuteeId: req.user.id,
       tutorId: tutor_id,
-      subjectId: subject_id,
+      subjectId: resolvedSubjectId,
       startTime: start_time,
       endTime: end_time,
-      notes,
     });
   }
 

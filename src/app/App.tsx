@@ -26,6 +26,7 @@ import { AdminLayout } from '../features/admin/components/AdminLayout';
 import { AdminOverview } from '../features/admin/pages/AdminOverview';
 import { AdminSectionPage } from '../features/admin/pages/AdminSectionPage';
 import { AdminAuditLogs } from '../features/admin/pages/AdminAuditLogs';
+import { AdminSubjectRequests } from '../features/admin/pages/AdminSubjectRequests';
 import { adminApi } from '../api/adminApi';
 
 // ── Role-aware redirect for the dashboard index ──────────────────────────────
@@ -54,6 +55,7 @@ const AdminDashboard: React.FC = () => (
         <Route path="sessions" element={<AdminSectionPage title="Sessions" description="Monitor bookings, statuses, and session operations." loadRows={adminApi.getSessions} />} />
         <Route path="wallets" element={<AdminSectionPage title="Wallets" description="Inspect token balances and wallet health." loadRows={adminApi.getWallets} />} />
         <Route path="reviews" element={<AdminSectionPage title="Reviews" description="Moderate review content and rating signals." loadRows={adminApi.getReviews} />} />
+        <Route path="subject-requests" element={<AdminSubjectRequests />} />
         <Route path="reports" element={<AdminSectionPage title="Reports" description="Handle abuse reports, escalations, and trust workflows." />} />
         <Route path="notifications" element={<AdminSectionPage title="Notifications" description="Prepare platform announcements and admin-triggered messages." />} />
         <Route path="settings" element={<AdminSectionPage title="Settings" description="Configure admin policies, roles, and operational controls." />} />

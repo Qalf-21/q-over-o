@@ -1,3 +1,4 @@
+
 // src/api/sessionApi.ts — FULL REPLACEMENT
 //
 // Changes:
@@ -9,11 +10,11 @@ import type { Session, TuteeSession } from '../types/tutor';
 
 export type BookSessionPayload = {
   tutor_id: string;
-  subject_id: string;
+  subject_id?: string;  // optional — backend falls back to tutor's first subject
   start_time: string;
   end_time: string;
   notes?: string;
-  availability_slot_id?: string;  // ← new: tells backend which slot was used
+  availability_slot_id?: string;
 };
 
 const minutesBetween = (start?: string, end?: string) => {
@@ -105,3 +106,4 @@ export const sessionApi = {
     return apiRequest<never>(`/sessions/${id}/cancel/undo`, { method: 'POST' });
   }
 };
+

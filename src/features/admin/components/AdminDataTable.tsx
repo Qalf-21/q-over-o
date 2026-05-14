@@ -5,12 +5,14 @@ interface AdminDataTableProps {
   title: string;
   rows: AdminTableRow[];
   emptyText?: string;
+  renderActions?: (row: AdminTableRow) => React.ReactNode;
 }
 
 export const AdminDataTable: React.FC<AdminDataTableProps> = ({
   title,
   rows,
   emptyText = 'No records found',
+  renderActions,
 }) => (
   <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] shadow-xl shadow-slate-950/30 backdrop-blur-xl">
     <div className="border-b border-white/10 px-5 py-4">
@@ -24,12 +26,15 @@ export const AdminDataTable: React.FC<AdminDataTableProps> = ({
             <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Status</th>
             <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Metadata</th>
             <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Created</th>
+            {renderActions && (
+              <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">Actions</th>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-white/10">
           {rows.length === 0 ? (
             <tr>
-              <td className="px-5 py-8 text-center text-sm text-slate-400" colSpan={4}>
+              <td className="px-5 py-8 text-center text-sm text-slate-400" colSpan={renderActions ? 5 : 4}>
                 {emptyText}
               </td>
             </tr>
@@ -49,6 +54,11 @@ export const AdminDataTable: React.FC<AdminDataTableProps> = ({
                 <td className="px-5 py-4 text-sm text-slate-400">
                   {row.createdAt ? new Date(row.createdAt).toLocaleDateString() : '-'}
                 </td>
+                {renderActions && (
+                  <td className="px-5 py-4 text-right">
+                    {renderActions(row)}
+                  </td>
+                )}
               </tr>
             ))
           )}

@@ -46,6 +46,124 @@ const {
 
 const displayName = (profile) => [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
 
+const cleanSubjectName = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+
+const subjectCodeFromName = (name) =>
+  cleanSubjectName(name)
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 12)
+    .toUpperCase() || null;
+
+const requestPendingSubjects = async (userId, subjectNames) => {
+  const requested = [];
+  const alreadyApprovedIds = [];
+
+  for (const rawName of subjectNames) {
+    const name = cleanSubjectName(rawName);
+    if (name.length < 2 || name.length > 80) {
+      throw new AppError('Requested subject names must be between 2 and 80 characters', 400, 'VALIDATION_ERROR');
+    }
+
+    const { data: existingSubject, error: existingError } = await supabase
+      .from('subjects')
+      .select('id')
+      .ilike('name', name)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingError) {
+      console.error('[requestPendingSubjects] Subject lookup error:', JSON.stringify(existingError));
+      throw new AppError('Failed to validate requested subjects', 500);
+    }
+
+    if (existingSubject?.id) {
+      alreadyApprovedIds.push(existingSubject.id);
+      continue;
+    }
+
+    const { error: requestError } = await supabase
+      .from('subject_requests')
+      .insert({
+        requested_by: userId,
+        name,
+        code: subjectCodeFromName(name),
+        status: 'pending',
+      });
+
+    if (requestError && requestError.code !== '23505') {
+      console.error('[requestPendingSubjects] Insert subject request error:', JSON.stringify(requestError));
+      throw new AppError('Failed to request new subject approval', 500);
+    }
+
+    requested.push(name);
+  }
+
+  return { requested, alreadyApprovedIds };
+};
+
+const ensureTutorProfileRow = async (userId) => {
+  const { data: existingProfile, error: checkError } = await supabase
+    .from('tutor_profiles')
+    .select('id, user_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (checkError) {
+    console.error('[updateProfile] Failed to check tutor_profiles row:', JSON.stringify(checkError));
+    throw new AppError('Failed to verify tutor profile', 500);
+  }
+
+  if (existingProfile?.user_id) return existingProfile;
+
+  console.warn('[updateProfile] tutor_profiles row missing for user, creating now:', userId);
+  const { error: insertError } = await supabase
+    .from('tutor_profiles')
+    .insert({
+      user_id:            userId,
+      bio:                '',
+      hourly_rate_tokens: 500,
+      is_available:       false,
+      updated_at:         new Date().toISOString(),
+    });
+
+  if (insertError && insertError.code !== '23505') {
+    console.error('[updateProfile] Failed to create tutor_profiles row:', JSON.stringify(insertError));
+    throw new AppError(
+      'Tutor profile could not be initialised. Please sign out and sign back in, then try again.',
+      500,
+      'PROFILE_INIT_FAILED',
+    );
+  }
+
+  if (insertError?.code === '23505') {
+    console.info('[updateProfile] tutor_profiles race-created by concurrent request, verifying.');
+  }
+
+  const { data: verifiedProfile, error: verifyError } = await supabase
+    .from('tutor_profiles')
+    .select('id, user_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (verifyError) {
+    console.error('[updateProfile] Failed to verify created tutor_profiles row:', JSON.stringify(verifyError));
+    throw new AppError('Failed to verify tutor profile', 500);
+  }
+
+  if (!verifiedProfile?.user_id) {
+    console.error('[updateProfile] tutor_profiles row still missing after create attempt:', userId);
+    throw new AppError(
+      'Tutor profile row could not be created. Sign out and back in.',
+      500,
+      'PROFILE_INIT_FAILED',
+    );
+  }
+
+  return verifiedProfile;
+};
+
 const ceilToNextHour = (date) => {
   const rounded = new Date(date);
   if (
@@ -111,9 +229,7 @@ exports.searchTutors = asyncHandler(async (req, res) => {
       )
     `);
 
-  // Only apply deleted_at filter — log but don't crash if column absent
-  query = query.is('deleted_at', null);
-
+  // NOTE: tutor_profiles does not have a deleted_at column — filter removed.
   if (minRating) query = query.gte('rating_avg', parseFloat(minRating));
   if (maxPrice)  query = query.lte('hourly_rate_tokens', parseFloat(maxPrice));
 
@@ -223,7 +339,7 @@ exports.getTutorById = asyncHandler(async (req, res) => {
       )
     `)
     .eq('user_id', id)
-    .is('deleted_at', null)
+    // NOTE: tutor_profiles does not have a deleted_at column — filter removed.
     .single();
 
   if (error || !tutor) throw new AppError('Tutor not found', 404);
@@ -464,55 +580,10 @@ exports.getTutorQualification = asyncHandler(async (req, res) => {
 // ─── FIX 2: updateProfile ─────────────────────────────────────────────────────
 exports.updateProfile = asyncHandler(async (req, res) => {
   const userId = req.user.id;
-  const { bio, hourlyRate, subjects } = req.body;
+  const { bio, hourlyRate, subjects, requestedSubjects } = req.body;
 
   // ── Ensure tutor_profiles row exists ────────────────────────────────────────
-  // FIX: Use UPSERT (onConflict) instead of plain INSERT so this is truly
-  // idempotent even under RLS restrictions that might block a plain INSERT
-  // when a conflicting row already exists (Supabase can return a non-23505
-  // error in that case, which the old code silently swallowed).
-  const { error: upsertError } = await supabase
-    .from('tutor_profiles')
-    .upsert(
-      {
-        user_id:            userId,
-        bio:                '',
-        hourly_rate_tokens: 500,
-        is_available:       false,
-        updated_at:         new Date().toISOString(),
-      },
-      { onConflict: 'user_id', ignoreDuplicates: true }
-    );
-
-  if (upsertError) {
-    console.error('[updateProfile] Failed to upsert tutor_profiles row:', JSON.stringify(upsertError));
-    throw new AppError('Failed to initialise tutor profile', 500);
-  }
-
-  // Hard-verify the row now exists before touching tutor_subjects.
-  // This catches any edge-case where the upsert silently did nothing
-  // and the row is genuinely missing (e.g. the user's profile row was
-  // deleted from profiles, orphaning the FK chain).
-  const { data: existingProfile, error: verifyError } = await supabase
-    .from('tutor_profiles')
-    .select('user_id')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (verifyError) {
-    console.error('[updateProfile] Failed to verify tutor_profiles row:', JSON.stringify(verifyError));
-    throw new AppError('Failed to verify tutor profile', 500);
-  }
-
-  if (!existingProfile) {
-    // The profiles.id row for this user may not exist — the FK chain is broken.
-    console.error('[updateProfile] tutor_profiles row missing after upsert for user:', userId);
-    throw new AppError(
-      'Tutor profile could not be initialised. Please sign out and sign back in, then try again.',
-      500,
-      'PROFILE_INIT_FAILED'
-    );
-  }
+  const tutorProfile = await ensureTutorProfileRow(userId);
 
   // ── Update bio / hourlyRate ──────────────────────────────────────────────────
   const qualification = await getTutorQualificationStatus(userId);
@@ -539,66 +610,107 @@ exports.updateProfile = asyncHandler(async (req, res) => {
     updates.hourly_rate_tokens = rate;
   }
 
-  const { error } = await supabase
+  const { data: updatedProfile, error } = await supabase
     .from('tutor_profiles')
     .update(updates)
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .select('user_id')
+    .maybeSingle();
 
   if (error) throw new AppError('Failed to update tutor profile', 500);
 
+  if (!updatedProfile?.user_id) {
+    console.error('[updateProfile] tutor_profiles row missing during profile update:', userId);
+    throw new AppError(
+      'Tutor profile row could not be created. Sign out and back in.',
+      500,
+      'PROFILE_INIT_FAILED',
+    );
+  }
+
   // ── Update subjects ──────────────────────────────────────────────────────────
-  if (subjects !== undefined) {
-    if (!Array.isArray(subjects)) {
+  if (subjects !== undefined || requestedSubjects !== undefined) {
+    const submittedSubjects = subjects ?? [];
+    const submittedRequestedSubjects = requestedSubjects ?? [];
+
+    if (!Array.isArray(submittedSubjects)) {
       throw new AppError('subjects must be an array of subject IDs', 400, 'VALIDATION_ERROR');
     }
 
-    if (subjects.length === 0) {
-      throw new AppError('At least one subject is required', 400, 'VALIDATION_ERROR');
+    if (!Array.isArray(submittedRequestedSubjects)) {
+      throw new AppError('requestedSubjects must be an array of subject names', 400, 'VALIDATION_ERROR');
     }
 
-    // Validate every submitted ID exists in the subjects table.
-    const { data: validSubjects, error: validateError } = await supabase
-      .from('subjects')
-      .select('id')
-      .in('id', subjects);
+    const approvedSubjectIds = [...new Set(submittedSubjects.filter(Boolean).map(String))];
+    const requestedSubjectNames = [...new Set(submittedRequestedSubjects.map(cleanSubjectName).filter(Boolean))];
 
-    if (validateError) {
-      console.error('[updateProfile] Subject validation error:', JSON.stringify(validateError));
-      throw new AppError('Failed to validate subjects', 500);
+    if (approvedSubjectIds.length === 0 && requestedSubjectNames.length === 0) {
+      throw new AppError('At least one approved or requested subject is required', 400, 'VALIDATION_ERROR');
     }
 
-    if (!validSubjects || validSubjects.length !== subjects.length) {
-      const validIds = new Set((validSubjects || []).map(s => s.id));
-      const invalidIds = subjects.filter(id => !validIds.has(id));
-      console.error('[updateProfile] Invalid subject IDs:', invalidIds);
-      throw new AppError('One or more subject IDs are invalid', 400, 'VALIDATION_ERROR');
+    const subjectRequestResult = await requestPendingSubjects(userId, requestedSubjectNames);
+    for (const subjectId of subjectRequestResult.alreadyApprovedIds) {
+      approvedSubjectIds.push(subjectId);
     }
 
-    // Delete existing rows.
-    const { error: deleteError } = await supabase
-      .from('tutor_subjects')
-      .delete()
-      .eq('tutor_id', userId)
-      .select();
+    const uniqueApprovedSubjectIds = [...new Set(approvedSubjectIds)];
 
-    if (deleteError) {
-      console.error('[updateProfile] Delete tutor_subjects error:', JSON.stringify(deleteError));
-      throw new AppError('Failed to update tutor subjects', 500);
-    }
+    if (uniqueApprovedSubjectIds.length > 0) {
+      const verifiedTutorProfile = await ensureTutorProfileRow(userId);
+      const tutorSubjectTutorId = verifiedTutorProfile.id || tutorProfile.id || userId;
 
-    // Insert new rows one at a time for precise error detail.
-    for (const subjectId of subjects) {
-      const { error: insertError } = await supabase
+      // Validate every submitted ID exists in the subjects table.
+      const { data: validSubjects, error: validateError } = await supabase
+        .from('subjects')
+        .select('id')
+        .in('id', uniqueApprovedSubjectIds);
+
+      if (validateError) {
+        console.error('[updateProfile] Subject validation error:', JSON.stringify(validateError));
+        throw new AppError('Failed to validate subjects', 500);
+      }
+
+      if (!validSubjects || validSubjects.length !== uniqueApprovedSubjectIds.length) {
+        const validIds = new Set((validSubjects || []).map(s => s.id));
+        const invalidIds = uniqueApprovedSubjectIds.filter(id => !validIds.has(id));
+        console.error('[updateProfile] Invalid subject IDs:', invalidIds);
+        throw new AppError('One or more subject IDs are invalid', 400, 'VALIDATION_ERROR');
+      }
+
+      // Delete existing approved subject rows only when there is an approved
+      // replacement set. Pending subject requests are not written here.
+      const { error: deleteError } = await supabase
         .from('tutor_subjects')
-        .insert({ tutor_id: userId, subject_id: subjectId })
+        .delete()
+        .eq('tutor_id', tutorSubjectTutorId)
         .select();
 
-      if (insertError) {
-        console.error(
-          `[updateProfile] Insert tutor_subjects error (subject ${subjectId}):`,
-          JSON.stringify(insertError),
-        );
+      if (deleteError) {
+        console.error('[updateProfile] Delete tutor_subjects error:', JSON.stringify(deleteError));
         throw new AppError('Failed to update tutor subjects', 500);
+      }
+
+      // Insert new rows one at a time for precise error detail.
+      for (const subjectId of uniqueApprovedSubjectIds) {
+        const { error: insertError } = await supabase
+          .from('tutor_subjects')
+          .insert({ tutor_id: tutorSubjectTutorId, subject_id: subjectId })
+          .select();
+
+        if (insertError) {
+          console.error(
+            `[updateProfile] Insert tutor_subjects error (subject ${subjectId}):`,
+            JSON.stringify(insertError),
+          );
+          if (insertError.code === '23503') {
+            throw new AppError(
+              'Tutor profile row could not be created. Sign out and back in.',
+              500,
+              'PROFILE_INIT_FAILED',
+            );
+          }
+          throw new AppError('Failed to update tutor subjects', 500);
+        }
       }
     }
   }

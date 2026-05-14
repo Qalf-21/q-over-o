@@ -12,9 +12,12 @@ const {
   getOverview,        // legacy thin overview
   getReviews,
   getSessions,
+  getSubjectRequests,
   getTutors,
   getUsers,
   getWallets,
+  approveSubjectRequest,
+  rejectSubjectRequest,
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -31,6 +34,9 @@ router.get('/tutors',      getTutors);
 router.get('/sessions',    getSessions);
 router.get('/wallets',     getWallets);
 router.get('/reviews',     getReviews);
+router.get('/subject-requests', getSubjectRequests);
+router.post('/subject-requests/:id/approve', approveSubjectRequest);
+router.post('/subject-requests/:id/reject',  rejectSubjectRequest);
 router.get('/audit-logs',  getAuditLogs);
 
 module.exports = router;

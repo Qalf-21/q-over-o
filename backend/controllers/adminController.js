@@ -27,6 +27,16 @@ const logAdminAction = async (req, action, targetType, targetId = null, metadata
 const profileName = (profile) =>
   [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email || 'Unknown';
 
+const cleanSubjectName = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+
+const subjectCodeFromName = (name) =>
+  cleanSubjectName(name)
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 12)
+    .toUpperCase() || null;
+
 // Parallel count helper — never throws, returns 0 on error
 const safeCount = async (table, builder = (q) => q) => {
   try {
@@ -444,4 +454,156 @@ exports.getAuditLogs = asyncHandler(async (req, res) => {
 
   if (error) throw new AppError('Failed to fetch admin logs', 500);
   res.json({ success: true, data: data || [] });
+});
+
+exports.getSubjectRequests = asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('subject_requests')
+    .select(`
+      id,
+      name,
+      code,
+      status,
+      admin_notes,
+      created_at,
+      requested_by,
+      requester:requested_by(email, first_name, last_name)
+    `)
+    .order('created_at', { ascending: false })
+    .limit(100);
+
+  if (error) throw new AppError('Failed to fetch subject requests', 500);
+
+  res.json({
+    success: true,
+    data: (data || []).map((request) => ({
+      id: request.id,
+      title: request.name,
+      subtitle: profileName(request.requester),
+      status: request.status,
+      metadata: request.code || request.requested_by,
+      createdAt: request.created_at,
+    })),
+  });
+});
+
+exports.approveSubjectRequest = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data: request, error: requestError } = await supabase
+    .from('subject_requests')
+    .select('id, name, code, status')
+    .eq('id', id)
+    .single();
+
+  if (requestError || !request) throw new AppError('Subject request not found', 404);
+  if (request.status !== 'pending') throw new AppError('Subject request has already been reviewed', 409);
+
+  const name = cleanSubjectName(request.name);
+  const code = request.code || subjectCodeFromName(name);
+
+  const { data: existingSubject, error: existingError } = await supabase
+    .from('subjects')
+    .select('id, name, code')
+    .ilike('name', name)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingError) throw new AppError('Failed to validate approved subject', 500);
+
+  let subject = existingSubject;
+  if (!subject) {
+    const { data: insertedSubject, error: insertError } = await supabase
+      .from('subjects')
+      .insert({ name, code })
+      .select('id, name, code')
+      .single();
+
+    if (insertError) {
+      console.error('[approveSubjectRequest] Insert subject error:', JSON.stringify(insertError));
+      throw new AppError('Failed to add approved subject', 500);
+    }
+
+    subject = insertedSubject;
+  }
+
+  const { data: matchingRequests, error: matchingError } = await supabase
+    .from('subject_requests')
+    .select('id, requested_by')
+    .eq('status', 'pending')
+    .ilike('name', name);
+
+  if (matchingError) throw new AppError('Failed to find matching subject requests', 500);
+
+  for (const matchingRequest of matchingRequests || []) {
+    const { data: tutorProfile, error: tutorProfileError } = await supabase
+      .from('tutor_profiles')
+      .select('id')
+      .eq('user_id', matchingRequest.requested_by)
+      .maybeSingle();
+
+    if (tutorProfileError || !tutorProfile?.id) {
+      console.error('[approveSubjectRequest] Tutor profile lookup error:', JSON.stringify(tutorProfileError));
+      throw new AppError('Failed to find tutor profile for approved subject', 500);
+    }
+
+    const { error: joinError } = await supabase
+      .from('tutor_subjects')
+      .insert({ tutor_id: tutorProfile.id, subject_id: subject.id });
+
+    if (joinError && joinError.code !== '23505') {
+      console.error('[approveSubjectRequest] Insert tutor_subjects error:', JSON.stringify(joinError));
+      throw new AppError('Failed to assign approved subject to tutor', 500);
+    }
+  }
+
+  const requestIds = (matchingRequests || []).map((matchingRequest) => matchingRequest.id);
+  const { error: updateError } = await supabase
+    .from('subject_requests')
+    .update({
+      status: 'approved',
+      reviewed_by: req.user.id,
+      reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .in('id', requestIds.length ? requestIds : [request.id]);
+
+  if (updateError) throw new AppError('Failed to mark subject request approved', 500);
+
+  await logAdminAction(req, 'subject_request.approve', 'subject_request', id, {
+    subjectId: subject.id,
+    subjectName: subject.name,
+  });
+
+  res.json({ success: true, message: 'Subject approved', data: subject });
+});
+
+exports.rejectSubjectRequest = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { notes = null } = req.body || {};
+
+  const { data: request, error: requestError } = await supabase
+    .from('subject_requests')
+    .select('id, status')
+    .eq('id', id)
+    .single();
+
+  if (requestError || !request) throw new AppError('Subject request not found', 404);
+  if (request.status !== 'pending') throw new AppError('Subject request has already been reviewed', 409);
+
+  const { error } = await supabase
+    .from('subject_requests')
+    .update({
+      status: 'rejected',
+      admin_notes: notes ? String(notes).trim() : null,
+      reviewed_by: req.user.id,
+      reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+
+  if (error) throw new AppError('Failed to reject subject request', 500);
+
+  await logAdminAction(req, 'subject_request.reject', 'subject_request', id, { notes });
+  res.json({ success: true, message: 'Subject request rejected' });
 });

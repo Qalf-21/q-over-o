@@ -68,7 +68,7 @@ export const tutorApi = {
     return apiRequest('/tutors/qualification/me', { method: 'GET' });
   },
 
-  async updateProfile(profile: { bio?: string; hourlyRate?: number; subjects?: string[] }) {
+  async updateProfile(profile: { bio?: string; hourlyRate?: number; subjects?: string[]; requestedSubjects?: string[] }) {
     return apiRequest('/tutors/profile', {
       method: 'PUT',
       body: profile

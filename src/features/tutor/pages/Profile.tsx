@@ -108,6 +108,7 @@ interface SubjectOption {
   id: string;
   name: string;
   code?: string;
+  pending?: boolean;
 }
 
 interface SubjectSelectorProps {
@@ -156,6 +157,12 @@ const SubjectSelector: React.FC<SubjectSelectorProps> = ({ selected, onChange })
   }, []);
 
   const selectedIds = new Set(selected.map((s) => s.id));
+  const selectedNames = new Set(selected.map((s) => s.name.toLowerCase()));
+  const cleanSearch = search.trim().replace(/\s+/g, ' ');
+  const canRequestSubject =
+    cleanSearch.length >= 2 &&
+    !allSubjects.some((s) => s.name.toLowerCase() === cleanSearch.toLowerCase()) &&
+    !selectedNames.has(cleanSearch.toLowerCase());
 
   const filtered = allSubjects.filter(
     (s) =>
@@ -166,6 +173,20 @@ const SubjectSelector: React.FC<SubjectSelectorProps> = ({ selected, onChange })
   const addSubject = (subject: SubjectOption) => {
     onChange([...selected, subject]);
     setSearch('');
+  };
+
+  const addRequestedSubject = () => {
+    if (!canRequestSubject) return;
+    onChange([
+      ...selected,
+      {
+        id: `pending:${cleanSearch.toLowerCase()}`,
+        name: cleanSearch,
+        pending: true,
+      },
+    ]);
+    setSearch('');
+    setIsOpen(false);
   };
 
   const removeSubject = (id: string) => {
@@ -182,9 +203,14 @@ const SubjectSelector: React.FC<SubjectSelectorProps> = ({ selected, onChange })
         {selected.map((subject) => (
           <span
             key={subject.id}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg text-sm font-medium"
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${
+              subject.pending
+                ? 'bg-amber-100 text-amber-800'
+                : 'bg-indigo-100 text-indigo-700'
+            }`}
           >
             {subject.name}
+            {subject.pending && <span className="text-[11px] font-semibold">pending</span>}
             <button
               type="button"
               onClick={() => removeSubject(subject.id)}
@@ -223,25 +249,41 @@ const SubjectSelector: React.FC<SubjectSelectorProps> = ({ selected, onChange })
                 <div className="flex items-center justify-center py-6">
                   <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
                 </div>
-              ) : filtered.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">
-                  {search ? 'No subjects match your search' : allSubjects.length === 0 ? 'No subjects available' : 'All subjects already selected'}
-                </p>
               ) : (
-                filtered.map((subject) => (
-                  <button
-                    key={subject.id}
-                    type="button"
-                    onClick={() => addSubject(subject)}
-                    className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-indigo-50 text-left transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
-                    <span className="text-sm text-gray-800">{subject.name}</span>
-                    {subject.code && (
-                      <span className="ml-auto text-xs text-gray-400">{subject.code}</span>
-                    )}
-                  </button>
-                ))
+                <>
+                  {filtered.map((subject) => (
+                    <button
+                      key={subject.id}
+                      type="button"
+                      onClick={() => addSubject(subject)}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-indigo-50 text-left transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+                      <span className="text-sm text-gray-800">{subject.name}</span>
+                      {subject.code && (
+                        <span className="ml-auto text-xs text-gray-400">{subject.code}</span>
+                      )}
+                    </button>
+                  ))}
+
+                  {canRequestSubject && (
+                    <button
+                      type="button"
+                      onClick={addRequestedSubject}
+                      className="w-full flex items-center gap-2 border-t border-gray-100 px-4 py-2.5 hover:bg-amber-50 text-left transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                      <span className="text-sm text-gray-800">Request "{cleanSearch}"</span>
+                      <span className="ml-auto text-xs text-amber-600">admin approval</span>
+                    </button>
+                  )}
+
+                  {filtered.length === 0 && !canRequestSubject && (
+                    <p className="text-sm text-gray-400 text-center py-4">
+                      {search ? 'No subjects match your search' : allSubjects.length === 0 ? 'No subjects available' : 'All subjects already selected'}
+                    </p>
+                  )}
+                </>
               )}
             </motion.div>
           )}
@@ -504,8 +546,13 @@ export const Profile: React.FC = () => {
       setTutorSettingsError('Hourly rate must be a positive number');
       return;
     }
-    if (tutorSettings.subjects.length === 0) {
-      setTutorSettingsError('Please select at least one subject');
+    const approvedSubjects = tutorSettings.subjects.filter((subject) => !subject.pending);
+    const requestedSubjects = tutorSettings.subjects
+      .filter((subject) => subject.pending)
+      .map((subject) => subject.name);
+
+    if (approvedSubjects.length === 0 && requestedSubjects.length === 0) {
+      setTutorSettingsError('Please select or request at least one subject');
       return;
     }
 
@@ -515,11 +562,18 @@ export const Profile: React.FC = () => {
       await tutorApi.updateProfile({
         bio: tutorSettings.bio.trim(),
         ...(isPaidTutoringUnlocked ? { hourlyRate: rate } : {}),
-        subjects: tutorSettings.subjects.map((s) => s.id),
+        subjects: approvedSubjects.map((s) => s.id),
+        requestedSubjects,
       });
       await fetchProfile();
       setIsEditingTutor(false);
-      showToast({ type: 'success', title: 'Tutor settings saved', message: 'Your profile is live and visible to students.' });
+      showToast({
+        type: 'success',
+        title: 'Tutor settings saved',
+        message: requestedSubjects.length
+          ? 'Approved subjects are live. New subjects were sent for admin approval.'
+          : 'Your profile is live and visible to students.',
+      });
     } catch (err) {
       setTutorSettingsError(err instanceof Error ? err.message : 'Failed to save tutor settings');
     } finally {
