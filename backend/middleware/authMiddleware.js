@@ -29,6 +29,13 @@ const authMiddleware = async (req, res, next) => {
       throw new AppError('Profile not found.', 404, 'PROFILE_NOT_FOUND');
     }
 
+    const { data: admin } = await supabase
+      .from('admins')
+      .select('role, is_active')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .maybeSingle();
+
     const authUser = {
       id: user.id,
       aud: user.aud,
@@ -38,6 +45,8 @@ const authMiddleware = async (req, res, next) => {
       updated_at: user.updated_at,
       profile,
       role: profile.role || 'tutee',
+      adminRole: admin?.role ?? null,
+      is_admin: Boolean(admin?.role),
       first_name: profile.first_name,
       last_name: profile.last_name,
       is_tutor: profile.role === 'tutor' || profile.is_tutor === true

@@ -24,6 +24,7 @@ const walletRoutes    = require('./routes/walletRoutes');    // NEW (full replac
 const reviewRoutes    = require('./routes/reviewRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const userRoutes      = require('./routes/userRoutes');
+const adminRoutes     = require('./routes/adminRoutes');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -65,6 +66,7 @@ app.use('/api/wallet',    walletRoutes);
 app.use('/api/reviews',   reviewRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/users',     userRoutes);
+app.use('/api/admin',     adminRoutes);
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));

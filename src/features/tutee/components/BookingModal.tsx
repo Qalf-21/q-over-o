@@ -61,6 +61,24 @@ const minutesBetween = (a: string, b: string) =>
 const addMinutes = (iso: string, mins: number) =>
   new Date(new Date(iso).getTime() + mins * 60000).toISOString();
 
+const ceilToNextHour = (date: Date) => {
+  const rounded = new Date(date);
+  if (
+    rounded.getMinutes() === 0 &&
+    rounded.getSeconds() === 0 &&
+    rounded.getMilliseconds() === 0
+  ) {
+    return rounded;
+  }
+  rounded.setHours(rounded.getHours() + 1, 0, 0, 0);
+  return rounded;
+};
+
+const currentBookableStart = (startIso: string, now: Date) => {
+  const start = new Date(startIso);
+  return start <= now ? ceilToNextHour(now) : start;
+};
+
 /** Group slots by calendar date (YYYY-MM-DD) */
 const groupByDate = (slots: AvailabilitySlot[]): Record<string, AvailabilitySlot[]> => {
   return slots.reduce<Record<string, AvailabilitySlot[]>>((acc, s) => {
@@ -123,12 +141,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         const now = new Date();
         const normalized: AvailabilitySlot[] = raw
           .filter(s => new Date(s.end_time ?? s.endTime) > now)
-          .map(s => ({
-            id: s.id,
-            start_time: s.start_time ?? s.startTime,
-            end_time:   s.end_time   ?? s.endTime,
-            slotMinutes: minutesBetween(s.start_time ?? s.startTime, s.end_time ?? s.endTime),
-          }))
+          .map(s => {
+            const start = currentBookableStart(s.start_time ?? s.startTime, now).toISOString();
+            const end = s.end_time ?? s.endTime;
+            return {
+              id: s.id,
+              start_time: start,
+              end_time:   end,
+              slotMinutes: minutesBetween(start, end),
+            };
+          })
+          .filter(s => s.slotMinutes > 0)
           .sort((a, b) => a.start_time.localeCompare(b.start_time));
         setSlots(normalized);
       })
@@ -163,7 +186,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const canProceed =
     !!selectedSlot &&
     !!effectiveStart &&
-    !!topic.trim() &&
     hasEnoughTokens;
 
   const dateGroups = groupByDate(slots);

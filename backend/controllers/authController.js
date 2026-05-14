@@ -8,6 +8,17 @@
 const supabase = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
 
+const getAdminRole = async (userId) => {
+  const { data: admin } = await supabase
+    .from('admins')
+    .select('role, is_active')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  return admin?.role ?? null;
+};
+
 // ─── Register ─────────────────────────────────────────────────────────────────
 
 exports.register = asyncHandler(async (req, res) => {
@@ -108,6 +119,8 @@ exports.login = asyncHandler(async (req, res) => {
     .eq('id', data.user.id)
     .single();
 
+  const adminRole = await getAdminRole(data.user.id);
+
   // ── Ensure wallet exists for users who registered before this fix ────────────
   await supabase
     .from('wallets')
@@ -129,6 +142,8 @@ exports.login = asyncHandler(async (req, res) => {
         updated_at:   data.user.updated_at,
         profile,
         role:         profile?.role ?? 'tutee',
+        adminRole,
+        isAdmin:      Boolean(adminRole),
         first_name:   profile?.first_name,
         last_name:    profile?.last_name,
       },

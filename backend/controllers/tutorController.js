@@ -14,6 +14,54 @@ const {
 
 const displayName = (profile) => [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
 
+const ceilToNextHour = (date) => {
+  const rounded = new Date(date);
+  if (
+    rounded.getMinutes() === 0 &&
+    rounded.getSeconds() === 0 &&
+    rounded.getMilliseconds() === 0
+  ) {
+    return rounded;
+  }
+  rounded.setHours(rounded.getHours() + 1, 0, 0, 0);
+  return rounded;
+};
+
+const withCurrentBookableStart = (slot, nowDate = new Date()) => {
+  const start = new Date(slot.start_time);
+  const end = new Date(slot.end_time);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= nowDate) {
+    return null;
+  }
+
+  const bookableStart = start <= nowDate ? ceilToNextHour(nowDate) : start;
+  if (bookableStart >= end) return null;
+
+  return {
+    ...slot,
+    original_start_time: slot.start_time,
+    start_time: bookableStart.toISOString(),
+  };
+};
+
+const hasCurrentBookableAvailability = async (tutorId, nowDate = new Date()) => {
+  const { data: slots, error } = await supabase
+    .from('availability_slots')
+    .select('id, start_time, end_time')
+    .eq('tutor_id', tutorId)
+    .eq('is_available', true)
+    .gt('end_time', nowDate.toISOString())
+    .limit(10);
+
+  if (error) {
+    console.error('[hasCurrentBookableAvailability] Supabase error:', error.message, error.details);
+    return false;
+  }
+
+  return (slots || []).some(slot => Boolean(withCurrentBookableStart(slot, nowDate)));
+};
+
 exports.searchTutors = asyncHandler(async (req, res) => {
   const {
     q,
@@ -35,11 +83,6 @@ exports.searchTutors = asyncHandler(async (req, res) => {
 
   if (minPrice) query = query.gte('hourly_rate_tokens', minPrice);
   if (maxPrice) query = query.lte('hourly_rate_tokens', maxPrice);
-
-  // ── Fix: actually apply the availableNow filter ──────────────────────────
-  if (availableNow === 'true') {
-    query = query.eq('is_available', true);
-  }
 
   const { data: tutors, error } = await query;
   if (error) throw new AppError('Failed to fetch tutors', 500);
@@ -72,8 +115,9 @@ exports.searchTutors = asyncHandler(async (req, res) => {
     return (b.rating_avg || 0) - (a.rating_avg || 0);
   });
 
-  const formatted = await Promise.all(results.map(async t => {
+  let formatted = await Promise.all(results.map(async t => {
     const qualification = await getTutorQualificationStatus(t.user_id);
+    const hasBookableSlots = await hasCurrentBookableAvailability(t.user_id);
     return {
       id:           t.user_id,
       firstName:    t.profiles?.first_name,
@@ -85,7 +129,7 @@ exports.searchTutors = asyncHandler(async (req, res) => {
       rating:       qualification.averageRating,
       totalReviews: t.total_reviews,
       isVerified:   t.is_verified,
-      isAvailable:  t.is_available ?? false,
+      isAvailable:  hasBookableSlots,
       qualification,
       rankReason:   hasFilter ? 'filtered' : 'rating',
       subjects:     t.subjects?.map(s => ({
@@ -95,6 +139,10 @@ exports.searchTutors = asyncHandler(async (req, res) => {
       })) || []
     };
   }));
+
+  if (availableNow === 'true') {
+    formatted = formatted.filter(t => t.isAvailable);
+  }
 
   res.json({ success: true, data: formatted });
 });
@@ -124,6 +172,7 @@ exports.getTutorById = asyncHandler(async (req, res) => {
     .limit(5);
 
   const qualification = await getTutorQualificationStatus(id);
+  const hasBookableSlots = await hasCurrentBookableAvailability(id);
 
   res.json({
     success: true,
@@ -138,7 +187,7 @@ exports.getTutorById = asyncHandler(async (req, res) => {
       rating:       qualification.averageRating,
       totalReviews: tutor.total_reviews,
       isVerified:   tutor.is_verified,
-      isAvailable:  tutor.is_available ?? false,
+      isAvailable:  hasBookableSlots,
       qualification,
       subjects:     tutor.subjects?.map(s => ({
         id:   s.subjects.id,
@@ -167,7 +216,8 @@ exports.getTutorReviews = asyncHandler(async (req, res) => {
 
 exports.getTutorAvailability = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
 
   const { data: slots, error } = await supabase
     .from('availability_slots')
@@ -178,7 +228,14 @@ exports.getTutorAvailability = asyncHandler(async (req, res) => {
     .order('start_time', { ascending: true });
 
   if (error) throw new AppError('Failed to fetch availability', 500);
-  res.json({ success: true, data: { slots: slots || [] } });
+  res.json({
+    success: true,
+    data: {
+      slots: (slots || [])
+        .map(slot => withCurrentBookableStart(slot, nowDate))
+        .filter(Boolean),
+    },
+  });
 });
 
 exports.getMyAvailability = asyncHandler(async (req, res) => {

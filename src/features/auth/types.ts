@@ -7,8 +7,17 @@ export interface User {
   lastName: string;
   email: string;
   role: 'tutee' | 'tutor';
+  adminRole?: AdminRole | null;
+  isAdmin?: boolean;
   createdAt: string;
 }
+
+export type AdminRole =
+  | 'super_admin'
+  | 'support_admin'
+  | 'finance_admin'
+  | 'moderator'
+  | 'analytics_admin';
 
 // ==========================
 // AUTH REQUEST PAYLOADS

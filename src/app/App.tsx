@@ -7,6 +7,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../features/auth/AuthContext';
 import { ProtectedRoute } from './ProtectedRoute';
+import { AdminRoute } from './AdminRoute';
 import { LandingPage } from '../features/landing/LandingPage';
 import { Login } from '../features/auth/pages/Login';
 import { Register } from '../features/auth/pages/Register';
@@ -21,12 +22,20 @@ import { Discover } from '../features/tutee/pages/Discover';
 import { MySessions } from '../features/tutee/pages/MySessions';
 import { History } from '../features/tutee/pages/History';
 import { TutorPublicPage } from '../features/tutor/pages/TutorPublicPage';
+import { AdminLayout } from '../features/admin/components/AdminLayout';
+import { AdminOverview } from '../features/admin/pages/AdminOverview';
+import { AdminSectionPage } from '../features/admin/pages/AdminSectionPage';
+import { AdminAuditLogs } from '../features/admin/pages/AdminAuditLogs';
+import { adminApi } from '../api/adminApi';
 
 // ── Role-aware redirect for the dashboard index ──────────────────────────────
 // Tutors  → /dashboard/overview
 // Tutees  → /dashboard/discover
 const DashboardIndex: React.FC = () => {
   const { user } = useAuth();
+  if (user?.adminRole) {
+    return <Navigate to="/dashboard/admin" replace />;
+  }
   return (
     <Navigate
       to={user?.role === 'tutor' ? '/dashboard/overview' : '/dashboard/discover'}
@@ -34,6 +43,26 @@ const DashboardIndex: React.FC = () => {
     />
   );
 };
+
+const AdminDashboard: React.FC = () => (
+  <AdminRoute allowedAdminRoles={['super_admin']}>
+    <AdminLayout>
+      <Routes>
+        <Route index element={<AdminOverview />} />
+        <Route path="users" element={<AdminSectionPage title="Users" description="Manage learner and tutor accounts." loadRows={adminApi.getUsers} />} />
+        <Route path="tutors" element={<AdminSectionPage title="Tutors" description="Review tutor profiles, qualifications, and marketplace state." loadRows={adminApi.getTutors} />} />
+        <Route path="sessions" element={<AdminSectionPage title="Sessions" description="Monitor bookings, statuses, and session operations." loadRows={adminApi.getSessions} />} />
+        <Route path="wallets" element={<AdminSectionPage title="Wallets" description="Inspect token balances and wallet health." loadRows={adminApi.getWallets} />} />
+        <Route path="reviews" element={<AdminSectionPage title="Reviews" description="Moderate review content and rating signals." loadRows={adminApi.getReviews} />} />
+        <Route path="reports" element={<AdminSectionPage title="Reports" description="Handle abuse reports, escalations, and trust workflows." />} />
+        <Route path="notifications" element={<AdminSectionPage title="Notifications" description="Prepare platform announcements and admin-triggered messages." />} />
+        <Route path="settings" element={<AdminSectionPage title="Settings" description="Configure admin policies, roles, and operational controls." />} />
+        <Route path="audit-logs" element={<AdminAuditLogs />} />
+        <Route path="*" element={<Navigate to="/dashboard/admin" replace />} />
+      </Routes>
+    </AdminLayout>
+  </AdminRoute>
+);
 
 // ── Tutor-only guard ─────────────────────────────────────────────────────────
 // Non-tutors are redirected to the tutee discover page instead of a dead end.
@@ -49,7 +78,12 @@ const TutorOnly: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   return (
-    <DashboardLayout user={user}>
+    <Routes>
+      <Route path="/admin/*" element={<AdminDashboard />} />
+      <Route
+        path="/*"
+        element={
+          <DashboardLayout user={user}>
       <Routes>
         {/* Index redirect — role-aware */}
         <Route path="/" element={<DashboardIndex />} />
@@ -78,7 +112,10 @@ const Dashboard: React.FC = () => {
         {/* Catch-all inside dashboard — role-aware index */}
         <Route path="*" element={<DashboardIndex />} />
       </Routes>
-    </DashboardLayout>
+          </DashboardLayout>
+        }
+      />
+    </Routes>
   );
 };
 

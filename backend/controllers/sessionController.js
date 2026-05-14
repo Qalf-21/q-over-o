@@ -16,6 +16,24 @@ const { generateMeetingLink } = require('../utils/meetingGenerator');
 
 const displayName = (profile) => [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
 
+const ceilToNextHour = (date) => {
+  const rounded = new Date(date);
+  if (
+    rounded.getMinutes() === 0 &&
+    rounded.getSeconds() === 0 &&
+    rounded.getMilliseconds() === 0
+  ) {
+    return rounded;
+  }
+  rounded.setHours(rounded.getHours() + 1, 0, 0, 0);
+  return rounded;
+};
+
+const getCurrentBookableStart = (slotStart, now = new Date()) => {
+  const start = new Date(slotStart);
+  return start <= now ? ceilToNextHour(now) : start;
+};
+
 // ── Slot trimming helper ───────────────────────────────────────────────────────
 // Called after a successful booking to remove the booked window from the slot.
 // This ensures the slot is no longer shown as available for that time.
@@ -31,7 +49,7 @@ const trimAvailabilitySlot = async (tutorId, slotId, sessionStart, sessionEnd) =
 
   if (fetchErr || !slot) return; // slot not found or already gone — skip
 
-  const slotStart = slot.start_time;
+  const slotStart = getCurrentBookableStart(slot.start_time).toISOString();
   const slotEnd   = slot.end_time;
 
   const sessionStartsAtSlotStart = sessionStart <= slotStart;
@@ -143,9 +161,50 @@ exports.bookSession = asyncHandler(async (req, res) => {
     throw new AppError('tutor_id, subject_id, start_time, and end_time are required', 400);
   }
 
+  const requestedStart = new Date(start_time);
+  const requestedEnd = new Date(end_time);
+  const now = new Date();
+
+  if (
+    Number.isNaN(requestedStart.getTime()) ||
+    Number.isNaN(requestedEnd.getTime()) ||
+    requestedEnd <= requestedStart
+  ) {
+    throw new AppError('Session end time must be after start time', 400);
+  }
+
+  if (requestedStart <= now) {
+    throw new AppError('Cannot book a time slot that has already started', 400);
+  }
+
   // ── Self-booking guard ──────────────────────────────────────────────────────
   if (req.user.id === tutor_id) {
     throw new AppError('You cannot book a session with yourself', 400);
+  }
+
+  if (availability_slot_id) {
+    const { data: slot, error: slotError } = await supabase
+      .from('availability_slots')
+      .select('*')
+      .eq('id', availability_slot_id)
+      .eq('tutor_id', tutor_id)
+      .eq('is_available', true)
+      .single();
+
+    if (slotError || !slot) {
+      throw new AppError('Availability slot is no longer available', 409);
+    }
+
+    const slotEnd = new Date(slot.end_time);
+    const bookableStart = getCurrentBookableStart(slot.start_time, now);
+
+    if (slotEnd <= now || bookableStart >= slotEnd) {
+      throw new AppError('Availability slot is no longer available', 409);
+    }
+
+    if (requestedStart < bookableStart || requestedEnd > slotEnd) {
+      throw new AppError('Requested session is outside the available time slot', 409);
+    }
   }
 
   // ── Review gate ─────────────────────────────────────────────────────────────
