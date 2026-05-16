@@ -34,13 +34,24 @@ export const MySessions: React.FC = () => {
     if (activeTab === 'upcoming') {
       return ['pending', 'confirmed', 'in-progress'].includes(session.status);
     }
-    return session.status === 'completed';
+    return ['completed', 'cancelled', 'declined'].includes(session.status);
   });
 
   const handleJoinSession = (session: TuteeSession) => {
     if (session.meetingLink) {
       window.open(session.meetingLink, '_blank');
     }
+  };
+
+  const canJoinSession = (session: TuteeSession) => {
+    const scheduledAt = new Date(session.scheduledAt);
+    const now = new Date();
+    return (
+      ['confirmed', 'in-progress'].includes(session.status) &&
+      Boolean(session.meetingLink) &&
+      now >= new Date(scheduledAt.getTime() - 5 * 60 * 1000) &&
+      now <= new Date(scheduledAt.getTime() + 10 * 60 * 1000)
+    );
   };
 
   const handleCancel = async (sessionId: string) => {
@@ -63,7 +74,9 @@ export const MySessions: React.FC = () => {
       'pending': 'bg-amber-100 text-amber-700',
       'confirmed': 'bg-green-100 text-green-700',
       'in-progress': 'bg-blue-100 text-blue-700',
-      'completed': 'bg-gray-100 text-gray-700'
+      'completed': 'bg-gray-100 text-gray-700',
+      'cancelled': 'bg-red-100 text-red-700',
+      'declined': 'bg-gray-100 text-gray-500'
     };
     return colors[status] || 'bg-gray-100 text-gray-700';
   };
@@ -154,7 +167,7 @@ export const MySessions: React.FC = () => {
 
                 {/* Actions */}
                 <div className="flex gap-3 mt-4 pt-4 border-t border-gray-100">
-                  {session.status === 'confirmed' && (
+                  {canJoinSession(session) && (
                     <button
                       onClick={() => handleJoinSession(session)}
                       className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-medium hover:shadow-md transition-all"

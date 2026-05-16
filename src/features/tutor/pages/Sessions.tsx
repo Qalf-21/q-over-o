@@ -5,7 +5,7 @@ import { Calendar, Filter, Loader2, Search, Video } from 'lucide-react';
 import type { Session } from '../tutor';
 import { sessionApi } from '../../../api/sessionApi';
 
-type SessionFilter = 'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled';
+type SessionFilter = 'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'declined';
 
 export const Sessions: React.FC = () => {
   const [activeFilter, setActiveFilter] = useState<SessionFilter>('all');
@@ -36,7 +36,8 @@ export const Sessions: React.FC = () => {
     { value: 'pending', label: 'Pending' },
     { value: 'confirmed', label: 'Confirmed' },
     { value: 'completed', label: 'Completed' },
-    { value: 'cancelled', label: 'Cancelled' }
+    { value: 'cancelled', label: 'Cancelled' },
+    { value: 'declined', label: 'Declined' }
   ];
 
   const filteredSessions = sessions.filter(session => {
@@ -47,13 +48,39 @@ export const Sessions: React.FC = () => {
   });
 
   const handleComplete = async (id: string) => {
-    await sessionApi.completeSession(id);
-    await loadSessions();
+    try {
+      await sessionApi.completeSession(id);
+      await loadSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to complete session');
+    }
+  };
+
+  const handleAccept = async (id: string) => {
+    try {
+      await sessionApi.acceptSession(id);
+      await loadSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to accept session');
+    }
+  };
+
+  const handleDecline = async (id: string) => {
+    try {
+      await sessionApi.declineSession(id);
+      await loadSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to decline session');
+    }
   };
 
   const handleCancel = async (id: string) => {
-    await sessionApi.cancelSession(id);
-    await loadSessions();
+    try {
+      await sessionApi.cancelSession(id);
+      await loadSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel session');
+    }
   };
 
   const handleJoin = (session: Session) => {
@@ -135,6 +162,8 @@ export const Sessions: React.FC = () => {
               <SessionCard
                 key={session.id}
                 session={session}
+                onAccept={handleAccept}
+                onDecline={handleDecline}
                 onComplete={handleComplete}
                 onCancel={handleCancel}
                 onJoin={handleJoin}

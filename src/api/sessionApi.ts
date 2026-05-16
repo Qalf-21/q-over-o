@@ -8,6 +8,8 @@
 import { apiRequest } from './client';
 import type { Session, TuteeSession } from '../types/tutor';
 
+type RawSession = Record<string, unknown>;
+
 export type BookSessionPayload = {
   tutor_id: string;
   subject_id?: string;  // optional — backend falls back to tutor's first subject
@@ -22,44 +24,71 @@ const minutesBetween = (start?: string, end?: string) => {
   return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000));
 };
 
-const tokenAmount = (session: any) =>
-  session.tokenAmount ?? session.token_amount ?? session.amount_tokens ?? session.cost_tokens ?? 0;
+const asString = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
 
-const subjectName = (session: any) =>
-  session.subject || session.subjectName || session.subject_name || session.subjects?.name || 'General';
+const asNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' ? value : undefined;
 
-const topic = (session: any) => session.topic || session.notes || 'Tutoring session';
-const profileName = (profile: any) => [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
+const asRecord = (value: unknown): RawSession | undefined =>
+  value && typeof value === 'object' && !Array.isArray(value) ? value as RawSession : undefined;
 
-export const normalizeTutorSession = (session: any): Session => ({
-  id: session.id,
-  tuteeId: session.tuteeId || session.tutee_id || '',
-  tuteeName: session.tuteeName || session.otherPartyName || session.tutee_name || profileName(session.profiles) || 'Student',
+const firstString = (...values: unknown[]): string | undefined =>
+  values.map(asString).find(Boolean);
+
+const durationMinutes = (session: RawSession) => {
+  const fromTimes = minutesBetween(
+    firstString(session.start_time, session.startTime, session.scheduledAt),
+    firstString(session.end_time, session.endTime, session.endsAt),
+  );
+  if (fromTimes > 0) return fromTimes;
+  const rawDuration = Number(session.duration || 0);
+  return rawDuration > 0 && rawDuration <= 12 ? rawDuration * 60 : rawDuration;
+};
+
+const tokenAmount = (session: RawSession) =>
+  asNumber(session.tokenAmount) ?? asNumber(session.token_amount) ?? asNumber(session.amount_tokens) ?? asNumber(session.cost_tokens) ?? 0;
+
+const subjectName = (session: RawSession) => {
+  const subjects = asRecord(session.subjects);
+  return firstString(session.subject, session.subjectName, session.subject_name, subjects?.name) || 'General';
+};
+
+const topic = (session: RawSession) => firstString(session.topic, session.notes) || 'Tutoring session';
+const profileName = (profile: unknown) => {
+  const record = asRecord(profile);
+  return [record?.first_name, record?.last_name].map(asString).filter(Boolean).join(' ');
+};
+
+export const normalizeTutorSession = (session: RawSession): Session => ({
+  id: firstString(session.id) || '',
+  tuteeId: firstString(session.tuteeId, session.tutee_id) || '',
+  tuteeName: firstString(session.tuteeName, session.otherPartyName, session.tutee_name) || profileName(session.profiles) || 'Student',
   subject: subjectName(session),
   topic: topic(session),
-  scheduledAt: session.scheduledAt || session.start_time || session.startTime,
-  duration: session.duration || minutesBetween(session.start_time, session.end_time),
-  status: session.status,
+  scheduledAt: firstString(session.scheduledAt, session.start_time, session.startTime) || '',
+  duration: durationMinutes(session),
+  status: (firstString(session.status) || 'pending') as Session['status'],
   tokenAmount: tokenAmount(session),
-  notes: session.notes,
-  meetingLink: session.meetingLink || session.meetingUrl || session.meeting_url,
-  createdAt: session.createdAt || session.created_at || ''
+  notes: firstString(session.notes),
+  meetingLink: firstString(session.meetingLink, session.meetingUrl, session.meeting_url),
+  createdAt: firstString(session.createdAt, session.created_at) || ''
 });
 
-export const normalizeTuteeSession = (session: any): TuteeSession => ({
-  id: session.id,
-  tutorId: session.tutorId || session.tutor_id || '',
-  tutorName: session.tutorName || session.otherPartyName || session.tutor_name || profileName(session.profiles) || 'Tutor',
-  tutorAvatar: session.tutorAvatar || session.tutor_avatar,
+export const normalizeTuteeSession = (session: RawSession): TuteeSession => ({
+  id: firstString(session.id) || '',
+  tutorId: firstString(session.tutorId, session.tutor_id) || '',
+  tutorName: firstString(session.tutorName, session.otherPartyName, session.tutor_name) || profileName(session.profiles) || 'Tutor',
+  tutorAvatar: firstString(session.tutorAvatar, session.tutor_avatar),
   subject: subjectName(session),
   topic: topic(session),
-  scheduledAt: session.scheduledAt || session.start_time || session.startTime,
-  duration: session.duration || minutesBetween(session.start_time, session.end_time),
-  status: session.status,
+  scheduledAt: firstString(session.scheduledAt, session.start_time, session.startTime) || '',
+  duration: durationMinutes(session),
+  status: (firstString(session.status) || 'pending') as TuteeSession['status'],
   tokenAmount: tokenAmount(session),
-  meetingLink: session.meetingLink || session.meetingUrl || session.meeting_url,
+  meetingLink: firstString(session.meetingLink, session.meetingUrl, session.meeting_url),
   hasReviewed: Boolean(session.hasReviewed || session.has_reviewed),
-  review: session.review
+  review: asRecord(session.review) as TuteeSession['review']
 });
 
 export const sessionApi = {
@@ -71,7 +100,7 @@ export const sessionApi = {
   },
 
   async getSessions() {
-    const response = await apiRequest<any[]>('/sessions', { method: 'GET' });
+    const response = await apiRequest<RawSession[]>('/sessions', { method: 'GET' });
     return {
       success: response.success,
       data: response.data || []
@@ -79,7 +108,7 @@ export const sessionApi = {
   },
 
   async getTutorSessions() {
-    const response = await apiRequest<any[]>('/sessions?mode=tutor', { method: 'GET' });
+    const response = await apiRequest<RawSession[]>('/sessions?mode=tutor', { method: 'GET' });
     return {
       success: response.success,
       data: (response.data || []).map(normalizeTutorSession)
@@ -87,7 +116,7 @@ export const sessionApi = {
   },
 
   async getTuteeSessions() {
-    const response = await apiRequest<any[]>('/sessions?mode=tutee', { method: 'GET' });
+    const response = await apiRequest<RawSession[]>('/sessions?mode=tutee', { method: 'GET' });
     return {
       success: response.success,
       data: (response.data || []).map(normalizeTuteeSession)
@@ -98,6 +127,14 @@ export const sessionApi = {
     return apiRequest<never>(`/sessions/${id}/complete`, { method: 'POST' });
   },
 
+  async acceptSession(id: string) {
+    return apiRequest<never>(`/sessions/${id}/accept`, { method: 'POST' });
+  },
+
+  async declineSession(id: string) {
+    return apiRequest<never>(`/sessions/${id}/decline`, { method: 'POST' });
+  },
+
   async cancelSession(id: string) {
     return apiRequest<never>(`/sessions/${id}/cancel`, { method: 'POST' });
   },
@@ -106,4 +143,3 @@ export const sessionApi = {
     return apiRequest<never>(`/sessions/${id}/cancel/undo`, { method: 'POST' });
   }
 };
-

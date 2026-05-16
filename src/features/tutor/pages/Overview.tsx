@@ -63,13 +63,39 @@ export const Overview: React.FC = () => {
     .slice(0, 3);
 
   const handleComplete = async (id: string) => {
-    await sessionApi.completeSession(id);
-    await loadOverview();
+    try {
+      await sessionApi.completeSession(id);
+      await loadOverview();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to complete session');
+    }
+  };
+
+  const handleAccept = async (id: string) => {
+    try {
+      await sessionApi.acceptSession(id);
+      await loadOverview();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to accept session');
+    }
+  };
+
+  const handleDecline = async (id: string) => {
+    try {
+      await sessionApi.declineSession(id);
+      await loadOverview();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to decline session');
+    }
   };
 
   const handleCancel = async (id: string) => {
-    await sessionApi.cancelSession(id);
-    await loadOverview();
+    try {
+      await sessionApi.cancelSession(id);
+      await loadOverview();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel session');
+    }
   };
 
   const handleJoin = (session: Session) => {
@@ -162,6 +188,8 @@ export const Overview: React.FC = () => {
             <SessionCard
               key={session.id}
               session={session}
+              onAccept={handleAccept}
+              onDecline={handleDecline}
               onComplete={handleComplete}
               onCancel={handleCancel}
               onJoin={handleJoin}

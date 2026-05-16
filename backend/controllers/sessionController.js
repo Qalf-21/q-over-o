@@ -16,6 +16,9 @@ const { getTutorQualificationStatus } = require('../services/tutorQualificationS
 const { generateMeetingLink } = require('../utils/meetingGenerator');
 
 const displayName = (profile) => [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
+const SESSION_JOIN_EARLY_MINUTES = 5;
+const SESSION_JOIN_LATE_MINUTES = 10;
+const TUTOR_EARNINGS_SHARE = 0.6;
 
 const ceilToNextHour = (date) => {
   const rounded = new Date(date);
@@ -145,6 +148,89 @@ const createFreeSession = async ({ tuteeId, tutorId, subjectId, startTime, endTi
 
   return session.id;
 };
+
+const updateSessionStatus = async (sessionId, status) => {
+  const { error } = await supabase
+    .from('sessions')
+    .update({ status })
+    .eq('id', sessionId);
+
+  if (error) {
+    throw new AppError(`Failed to update session status: ${error.message}`, 500);
+  }
+};
+
+const getSessionForActor = async (sessionId, actorId) => {
+  const { data: session, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .or(`tutee_id.eq.${actorId},tutor_id.eq.${actorId}`)
+    .maybeSingle();
+
+  if (error) throw new AppError('Failed to load session', 500);
+  if (!session) throw new AppError('Session not found', 404);
+  return session;
+};
+
+const withinJoinWindow = (session, now = new Date()) => {
+  const start = new Date(session.start_time);
+  const opensAt = new Date(start.getTime() - SESSION_JOIN_EARLY_MINUTES * 60 * 1000);
+  const closesAt = new Date(start.getTime() + SESSION_JOIN_LATE_MINUTES * 60 * 1000);
+  return now >= opensAt && now <= closesAt;
+};
+
+const getSessionMeetingLink = (session, now = new Date()) => {
+  if (!['confirmed', 'in-progress'].includes(session.status)) return null;
+  if (!withinJoinWindow(session, now)) return null;
+  return session.meeting_url || session.meeting_link || null;
+};
+
+const notifyUser = async ({ userId, type, title, message, linkUrl, data = {} }) => {
+  if (!userId) return;
+
+  const base = {
+    type,
+    title,
+    message,
+    data,
+  };
+
+  const payloads = [
+    { ...base, user_id: userId, link_url: linkUrl, is_read: false },
+    { ...base, user_id: userId, link: linkUrl, is_read: false },
+    { ...base, recipient_id: userId, link_url: linkUrl, read: false },
+  ];
+
+  for (const payload of payloads) {
+    const { error } = await supabase.from('notifications').insert(payload);
+    if (!error) return;
+  }
+};
+
+const expireOverdueSessions = async (userId = null) => {
+  const cutoff = new Date(Date.now() - SESSION_JOIN_LATE_MINUTES * 60 * 1000).toISOString();
+  let query = supabase
+    .from('sessions')
+    .select('id, tutor_id, tutee_id, status')
+    .in('status', ['pending', 'confirmed'])
+    .lt('start_time', cutoff);
+
+  if (userId) {
+    query = query.or(`tutee_id.eq.${userId},tutor_id.eq.${userId}`);
+  }
+
+  const { data: expiredSessions } = await query;
+
+  if (!expiredSessions?.length) return;
+
+  await supabase
+    .from('sessions')
+    .update({ status: 'cancelled' })
+    .in('id', expiredSessions.map(session => session.id));
+};
+
+exports.expireOverdueSessions = expireOverdueSessions;
 
 const resolveBookingSubjectId = async (tutorId, subjectId) => {
   const { data: tutorProfile, error: tutorProfileError } = await supabase
@@ -308,30 +394,16 @@ exports.bookSession = asyncHandler(async (req, res) => {
   }
 
   const qualification = await getTutorQualificationStatus(tutor_id);
-  let sessionId;
+  const sessionId = await createFreeSession({
+    tuteeId: req.user.id,
+    tutorId: tutor_id,
+    subjectId: resolvedSubjectId,
+    startTime: start_time,
+    endTime: end_time,
+  });
 
-  if (qualification.qualified) {
-    // ── Atomic booking (escrow + session insert) ───────────────────────────────
-    const { data, error } = await supabase.rpc('book_session_atomic', {
-      p_tutee_id: req.user.id,
-      p_tutor_id: tutor_id,
-      p_subject_id: resolvedSubjectId,
-      p_start: start_time,
-      p_end: end_time,
-    });
-
-    if (error) {
-      throw new AppError(error.message, 400);
-    }
-    sessionId = data;
-  } else {
-    sessionId = await createFreeSession({
-      tuteeId: req.user.id,
-      tutorId: tutor_id,
-      subjectId: resolvedSubjectId,
-      startTime: start_time,
-      endTime: end_time,
-    });
+  if (notes) {
+    await supabase.from('sessions').update({ notes }).eq('id', sessionId);
   }
 
   // ── Trim the availability slot (best-effort, non-blocking) ───────────────────
@@ -344,13 +416,23 @@ exports.bookSession = asyncHandler(async (req, res) => {
     console.error('[bookSession] slot trim failed:', trimErr?.message ?? trimErr);
   }
 
+  await notifyUser({
+    userId: tutor_id,
+    type: 'session_request',
+    title: 'New session request',
+    message: 'A tutee booked a session with you. Go to your sessions page to accept or decline it.',
+    linkUrl: '/dashboard/sessions',
+    data: { sessionId },
+  });
+
   res.status(201).json({
     success: true,
     session_id: sessionId,
     data: {
       sessionId,
-      paymentLocked: !qualification.qualified,
-      tokenAmount: qualification.qualified ? undefined : 0,
+      paymentLocked: false,
+      tokenAmount: 0,
+      escrowAmount: 0,
       qualification,
     },
   });
@@ -359,6 +441,7 @@ exports.bookSession = asyncHandler(async (req, res) => {
 // ── getSessions ────────────────────────────────────────────────────────────────
 exports.getSessions = asyncHandler(async (req, res) => {
   const userId = req.user.id;
+  await expireOverdueSessions(userId);
   const canTutor = req.user.role === 'tutor' || req.user.is_tutor;
   const requestedMode = req.query.mode;
   const isTutorMode = canTutor && requestedMode !== 'tutee';
@@ -400,6 +483,8 @@ exports.getSessions = asyncHandler(async (req, res) => {
       ...session,
       subject: session.subjects?.name,
       otherPartyName: displayName(profile) || 'Unknown',
+      meeting_url: getSessionMeetingLink(session),
+      token_amount: session.token_amount ?? session.amount_tokens ?? session.cost_tokens ?? 0,
       has_reviewed: Boolean(review),
       review
     };
@@ -414,14 +499,43 @@ exports.getSessions = asyncHandler(async (req, res) => {
 // ── completeSession ────────────────────────────────────────────────────────────
 exports.completeSession = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const session = await getSessionForActor(id, req.user.id);
 
-  const { error } = await supabase.rpc('release_escrow_on_completion', {
-    p_session_id: id,
-    p_actor_id: req.user.id
-  });
+  if (session.tutor_id !== req.user.id) {
+    throw new AppError('Only the tutor can complete this session', 403);
+  }
 
-  if (error) {
-    throw new AppError(error.message, 400);
+  if (!['confirmed', 'in-progress'].includes(session.status)) {
+    throw new AppError('Only accepted sessions can be completed', 409);
+  }
+
+  const { data: escrow } = await supabase
+    .from('escrow')
+    .select('*')
+    .eq('session_id', id)
+    .maybeSingle();
+
+  if (escrow?.amount_tokens > 0 && escrow.status === 'locked') {
+    const tutorShare = Math.floor(Number(escrow.amount_tokens) * TUTOR_EARNINGS_SHARE);
+    let { error } = await supabase.rpc('release_escrow_on_completion', {
+      p_session_id: id,
+      p_actor_id: req.user.id,
+      p_tutor_share: tutorShare,
+    });
+
+    if (error?.message?.includes('function') || error?.message?.includes('p_tutor_share')) {
+      const fallback = await supabase.rpc('release_escrow_on_completion', {
+        p_session_id: id,
+        p_actor_id: req.user.id,
+      });
+      error = fallback.error;
+    }
+
+    if (error) {
+      throw new AppError(error.message, 400);
+    }
+  } else {
+    await updateSessionStatus(id, 'completed');
   }
 
   res.json({
@@ -430,22 +544,106 @@ exports.completeSession = asyncHandler(async (req, res) => {
   });
 });
 
+// ── acceptSession ─────────────────────────────────────────────────────────────
+exports.acceptSession = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const session = await getSessionForActor(id, req.user.id);
+
+  if (session.tutor_id !== req.user.id) {
+    throw new AppError('Only the tutor can accept this session', 403);
+  }
+
+  if (session.status !== 'pending') {
+    throw new AppError('Only pending sessions can be accepted', 409);
+  }
+
+  if (new Date(session.start_time).getTime() + SESSION_JOIN_LATE_MINUTES * 60 * 1000 < Date.now()) {
+    await updateSessionStatus(id, 'cancelled');
+    throw new AppError('This session has expired and was cancelled automatically', 409);
+  }
+
+  await updateSessionStatus(id, 'confirmed');
+
+  await notifyUser({
+    userId: session.tutee_id,
+    type: 'booking_confirmed',
+    title: 'Session accepted',
+    message: 'Your tutor accepted your session request.',
+    linkUrl: '/dashboard/my-sessions',
+    data: { sessionId: id },
+  });
+
+  res.json({ success: true, message: 'Session accepted' });
+});
+
+// ── declineSession ────────────────────────────────────────────────────────────
+exports.declineSession = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const session = await getSessionForActor(id, req.user.id);
+
+  if (session.tutor_id !== req.user.id) {
+    throw new AppError('Only the tutor can decline this session', 403);
+  }
+
+  if (session.status !== 'pending') {
+    throw new AppError('Only pending sessions can be declined', 409);
+  }
+
+  await updateSessionStatus(id, 'declined');
+
+  await notifyUser({
+    userId: session.tutee_id,
+    type: 'booking_declined',
+    title: 'Session declined',
+    message: 'Your tutor declined your session request.',
+    linkUrl: '/dashboard/my-sessions',
+    data: { sessionId: id },
+  });
+
+  res.json({ success: true, message: 'Session declined' });
+});
+
 // ── cancelSession ──────────────────────────────────────────────────────────────
 exports.cancelSession = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const session = await getSessionForActor(id, req.user.id);
 
-  const { error } = await supabase.rpc('refund_escrow_on_cancellation', {
-    p_session_id: id,
-    p_actor_id: req.user.id
-  });
-
-  if (error) {
-    throw new AppError(error.message, 400);
+  if (!['pending', 'confirmed', 'in-progress'].includes(session.status)) {
+    throw new AppError('Only active sessions can be cancelled', 409);
   }
+
+  const { data: escrow } = await supabase
+    .from('escrow')
+    .select('*')
+    .eq('session_id', id)
+    .maybeSingle();
+
+  if (escrow?.amount_tokens > 0 && escrow.status === 'locked') {
+    const { error } = await supabase.rpc('refund_escrow_on_cancellation', {
+      p_session_id: id,
+      p_actor_id: req.user.id
+    });
+
+    if (error) {
+      throw new AppError(error.message, 400);
+    }
+  } else {
+    await updateSessionStatus(id, 'cancelled');
+  }
+
+  const recipientId = req.user.id === session.tutor_id ? session.tutee_id : session.tutor_id;
+  await notifyUser({
+    userId: recipientId,
+    type: 'session_cancelled',
+    title: 'Session cancelled',
+    message: 'A booked session was cancelled.',
+    linkUrl: req.user.id === session.tutor_id ? '/dashboard/my-sessions' : '/dashboard/sessions',
+    data: { sessionId: id },
+  });
 
   res.json({
     success: true,
-    message: 'Session cancelled and refund processed'
+    message: 'Session cancelled'
   });
 });
 

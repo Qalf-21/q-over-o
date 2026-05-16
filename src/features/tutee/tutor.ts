@@ -125,7 +125,7 @@ export interface TuteeSession {
   topic: string;
   scheduledAt: string;
   duration: number;
-  status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'declined';
   tokenAmount: number;
   meetingLink?: string;
   hasReviewed: boolean;
@@ -185,7 +185,7 @@ export interface TuteeSession {
   topic: string;
   scheduledAt: string;
   duration: number;
-  status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'declined';
   tokenAmount: number;
   meetingLink?: string;
   hasReviewed: boolean;

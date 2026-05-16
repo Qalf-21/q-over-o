@@ -93,7 +93,7 @@ export interface WithdrawalRequest {
 
 export interface Notification {
   id: string;
-  type: 'session_request' | 'booking_confirmed' | 'payment_received' | 'review_received' | 'system';
+  type: 'session_request' | 'booking_confirmed' | 'booking_declined' | 'session_cancelled' | 'payment_received' | 'review_received' | 'system';
   title: string;
   message: string;
   read: boolean;
@@ -147,7 +147,7 @@ export interface TuteeSession {
   topic: string;
   scheduledAt: string;
   duration: number;
-  status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'declined';
   tokenAmount: number;
   meetingLink?: string;
   hasReviewed: boolean;

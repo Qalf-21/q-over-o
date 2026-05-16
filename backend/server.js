@@ -25,6 +25,8 @@ const reviewRoutes    = require('./routes/reviewRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const userRoutes      = require('./routes/userRoutes');
 const adminRoutes     = require('./routes/adminRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const { expireOverdueSessions } = require('./controllers/sessionController');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -67,9 +69,16 @@ app.use('/api/reviews',   reviewRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/users',     userRoutes);
 app.use('/api/admin',     adminRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
+
+setInterval(() => {
+  expireOverdueSessions().catch(error => {
+    logger.error({ event: 'session_expiry_failed', error }, 'Failed to expire overdue sessions');
+  });
+}, 60 * 1000).unref();
 
 // ── Error handler (must be last) ────────────────────────────────────────────
 app.use(errorHandler);

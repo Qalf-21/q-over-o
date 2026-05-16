@@ -6,10 +6,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState } from 'react';
-import { Bell, Menu, Plus, Zap } from 'lucide-react';
+import { Bell, CheckCheck, Menu, Plus, Zap } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { User } from '../../auth/types';
 import { walletApi } from '../../../api/walletApi';
+import { notificationApi, type AppNotification } from '../../../api/notificationApi';
 
 interface TopNavbarProps {
   user: User | null;
@@ -25,7 +26,6 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const unreadCount = 0; // TODO: wire notifications context
   const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User';
   const initial = user?.firstName?.[0] || 'U';
 
@@ -36,6 +36,9 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
 
   const [balance,    setBalance]    = useState<number | null>(null);
   const [isFetching, setIsFetching] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   useEffect(() => {
     if (!showWallet) return; // no need to fetch if we won't display it
@@ -54,6 +57,41 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
     load();
     return () => { cancelled = true; };
   }, [showWallet]);
+
+  const loadNotifications = async () => {
+    try {
+      const { data } = await notificationApi.getNotifications();
+      setNotifications(data?.notifications || []);
+      setUnreadCount(data?.unreadCount || 0);
+    } catch {
+      setNotifications([]);
+      setUnreadCount(0);
+    }
+  };
+
+  useEffect(() => {
+    loadNotifications();
+  }, []);
+
+  const handleNotificationClick = async (notification: AppNotification) => {
+    if (!notification.read) {
+      await notificationApi.markRead(notification.id).catch(() => undefined);
+      setUnreadCount(count => Math.max(0, count - 1));
+      setNotifications(items =>
+        items.map(item => item.id === notification.id ? { ...item, read: true } : item),
+      );
+    }
+    setIsNotificationsOpen(false);
+    if (notification.linkUrl) {
+      navigate(notification.linkUrl);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    await notificationApi.markAllRead().catch(() => undefined);
+    setUnreadCount(0);
+    setNotifications(items => items.map(item => ({ ...item, read: true })));
+  };
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-20">
@@ -97,17 +135,65 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           )}
 
           {/* Notifications */}
-          <button
-            className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Notifications"
-          >
-            <Bell className="w-5 h-5 text-gray-600" />
-            {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                {unreadCount}
-              </span>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsNotificationsOpen(open => !open)}
+              className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label="Notifications"
+              aria-expanded={isNotificationsOpen}
+            >
+              <Bell className="w-5 h-5 text-gray-600" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-5 h-5 px-1 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+
+            {isNotificationsOpen && (
+              <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden z-30">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                  <h2 className="text-sm font-bold text-gray-900">Notifications</h2>
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleMarkAllRead}
+                      className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                    >
+                      <CheckCheck className="w-3.5 h-3.5" />
+                      Mark read
+                    </button>
+                  )}
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-sm text-gray-500">No notifications</div>
+                  ) : (
+                    notifications.map(notification => (
+                      <button
+                        key={notification.id}
+                        type="button"
+                        onClick={() => handleNotificationClick(notification)}
+                        className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="flex gap-3">
+                          <span className={`mt-1 h-2 w-2 rounded-full flex-none ${notification.read ? 'bg-gray-200' : 'bg-indigo-500'}`} />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold text-gray-900">{notification.title}</span>
+                            <span className="block mt-0.5 text-sm text-gray-600 line-clamp-2">{notification.message}</span>
+                            <span className="block mt-1 text-xs text-gray-400">
+                              {new Date(notification.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                            </span>
+                          </span>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
             )}
-          </button>
+          </div>
 
           {/* Profile */}
           <button

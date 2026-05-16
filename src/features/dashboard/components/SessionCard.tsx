@@ -35,9 +35,13 @@ export const SessionCard: React.FC<SessionCardProps> = ({
   const isConfirmed = session.status === 'confirmed';
   const scheduledDate = new Date(session.scheduledAt);
   const now = new Date();
+  const joinOpensAt = new Date(scheduledDate.getTime() - 5 * 60 * 1000);
+  const joinClosesAt = new Date(scheduledDate.getTime() + 10 * 60 * 1000);
   const canJoin =
     (session.status === 'confirmed' || session.status === 'in-progress') &&
-    Math.abs(now.getTime() - scheduledDate.getTime()) <= 15 * 60 * 1000;
+    Boolean(session.meetingLink) &&
+    now >= joinOpensAt &&
+    now <= joinClosesAt;
   
   const formattedDate = scheduledDate.toLocaleDateString('en-KE', {
     weekday: 'short',
@@ -143,16 +147,18 @@ export const SessionCard: React.FC<SessionCardProps> = ({
                 Cancel
               </button>
 
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onComplete?.(session.id);
-                }}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Complete
-              </button>
+              {onComplete && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onComplete(session.id);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Complete
+                </button>
+              )}
             </>
           )}
           
