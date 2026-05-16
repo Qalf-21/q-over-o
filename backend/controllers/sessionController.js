@@ -394,12 +394,15 @@ exports.bookSession = asyncHandler(async (req, res) => {
   }
 
   const qualification = await getTutorQualificationStatus(tutor_id);
+  const normalizedStartTime = requestedStart.toISOString();
+  const normalizedEndTime = requestedEnd.toISOString();
+
   const sessionId = await createFreeSession({
     tuteeId: req.user.id,
     tutorId: tutor_id,
     subjectId: resolvedSubjectId,
-    startTime: start_time,
-    endTime: end_time,
+    startTime: normalizedStartTime,
+    endTime: normalizedEndTime,
   });
 
   if (notes) {
@@ -410,7 +413,7 @@ exports.bookSession = asyncHandler(async (req, res) => {
   // We do this after the booking succeeds so a slot-trim failure doesn't
   // roll back a successful booking.
   try {
-    await trimAvailabilitySlot(tutor_id, availability_slot_id, start_time, end_time);
+    await trimAvailabilitySlot(tutor_id, availability_slot_id, normalizedStartTime, normalizedEndTime);
   } catch (trimErr) {
     // Log but don't fail the request
     console.error('[bookSession] slot trim failed:', trimErr?.message ?? trimErr);

@@ -14,6 +14,12 @@ const normalizeNotification = (notification) => ({
 
 exports.getNotifications = asyncHandler(async (req, res) => {
   const userId = req.user.id;
+  const response = await loadNotificationsForUser(userId);
+
+  res.json({ success: true, data: response });
+});
+
+const loadNotificationsForUser = async (userId) => {
   const queries = [
     supabase
       .from('notifications')
@@ -33,17 +39,54 @@ exports.getNotifications = asyncHandler(async (req, res) => {
     const { data, error } = await query;
     if (!error) {
       const notifications = (data || []).map(normalizeNotification);
-      return res.json({
-        success: true,
-        data: {
-          notifications,
-          unreadCount: notifications.filter(notification => !notification.read).length,
-        },
-      });
+      return {
+        notifications,
+        unreadCount: notifications.filter(notification => !notification.read).length,
+      };
     }
   }
 
-  res.json({ success: true, data: { notifications: [], unreadCount: 0 } });
+  return { notifications: [], unreadCount: 0 };
+};
+
+exports.streamNotifications = asyncHandler(async (req, res) => {
+  const token = req.query.token;
+  if (!token || typeof token !== 'string') {
+    return res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
+  }
+
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  let previousSignature = '';
+  const sendSnapshot = async () => {
+    const payload = await loadNotificationsForUser(user.id);
+    const signature = JSON.stringify({
+      unreadCount: payload.unreadCount,
+      ids: payload.notifications.map(notification => `${notification.id}:${notification.read}`),
+    });
+    if (signature === previousSignature) return;
+    previousSignature = signature;
+    res.write(`event: notifications\n`);
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  };
+
+  await sendSnapshot();
+  const interval = setInterval(() => {
+    sendSnapshot().catch(() => undefined);
+  }, 10_000);
+
+  req.on('close', () => {
+    clearInterval(interval);
+    res.end();
+  });
 });
 
 exports.markNotificationRead = asyncHandler(async (req, res) => {

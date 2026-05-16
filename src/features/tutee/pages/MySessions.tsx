@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar, Clock, Loader2, Video, CheckCircle2, Star, XCircle } from 'lucide-react';
+import { Calendar, Clock, Filter, Loader2, Search, Video, CheckCircle2, Star, XCircle } from 'lucide-react';
 import { ReviewModal } from '../components/ReviewModal';
 import type { TuteeSession, ReviewSubmission } from '../../../types/tutor';
 import { reviewApi } from '../../../api/reviewApi';
 import { sessionApi } from '../../../api/sessionApi';
 
 export const MySessions: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'upcoming' | 'completed'>('upcoming');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'declined'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [sessions, setSessions] = useState<TuteeSession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,11 +31,25 @@ export const MySessions: React.FC = () => {
     loadSessions();
   }, []);
 
+  const filters: { value: typeof activeFilter; label: string }[] = [
+    { value: 'all', label: 'All Sessions' },
+    { value: 'pending', label: 'Pending' },
+    { value: 'confirmed', label: 'Confirmed' },
+    { value: 'completed', label: 'Completed' },
+    { value: 'cancelled', label: 'Cancelled' },
+    { value: 'declined', label: 'Declined' },
+  ];
+
   const filteredSessions = sessions.filter(session => {
-    if (activeTab === 'upcoming') {
-      return ['pending', 'confirmed', 'in-progress'].includes(session.status);
-    }
-    return ['completed', 'cancelled', 'declined'].includes(session.status);
+    const matchesFilter = activeFilter === 'all' || session.status === activeFilter;
+    const query = searchQuery.trim().toLowerCase();
+    const matchesSearch =
+      !query ||
+      session.tutorName.toLowerCase().includes(query) ||
+      session.subject.toLowerCase().includes(query) ||
+      session.topic.toLowerCase().includes(query) ||
+      session.status.replace('-', ' ').includes(query);
+    return matchesFilter && matchesSearch;
   });
 
   const handleJoinSession = (session: TuteeSession) => {
@@ -88,21 +103,41 @@ export const MySessions: React.FC = () => {
         <p className="text-gray-600 mt-1">Track and manage your tutoring appointments</p>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 p-1 bg-gray-100 rounded-xl w-fit">
-        {(['upcoming', 'completed'] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-6 py-2 rounded-lg font-medium capitalize transition-all ${
-              activeTab === tab
-                ? 'bg-white text-indigo-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+      <div className="flex items-center gap-2 text-sm text-gray-500">
+        <span>{filteredSessions.length} sessions</span>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
+          <Filter className="w-4 h-4" />
+          Filters
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0">
+          {filters.map(filter => (
+            <button
+              key={filter.value}
+              onClick={() => setActiveFilter(filter.value)}
+              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
+                activeFilter === filter.value
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-white text-gray-600 border border-gray-200 hover:border-indigo-300'
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative flex-1 sm:max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search sessions..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+          />
+        </div>
       </div>
 
       {/* Sessions List */}
@@ -123,7 +158,8 @@ export const MySessions: React.FC = () => {
             className="text-center py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-300"
           >
             <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900">No {activeTab} sessions</h3>
+            <h3 className="text-lg font-medium text-gray-900">No sessions found</h3>
+            <p className="text-gray-500">Try adjusting your filters or search query</p>
           </motion.div>
         ) : (
           <div className="space-y-4">
@@ -151,7 +187,9 @@ export const MySessions: React.FC = () => {
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-4 h-4" />
-                          {new Date(session.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {session.scheduledEnd
+                            ? `${new Date(session.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(session.scheduledEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                            : new Date(session.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                     </div>

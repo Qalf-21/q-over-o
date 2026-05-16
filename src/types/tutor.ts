@@ -55,6 +55,7 @@ export interface Session {
   subject: string;
   topic: string;
   scheduledAt: string;
+  scheduledEnd?: string;
   duration: number; // minutes
   status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'declined';
   tokenAmount: number;
@@ -146,6 +147,7 @@ export interface TuteeSession {
   subject: string;
   topic: string;
   scheduledAt: string;
+  scheduledEnd?: string;
   duration: number;
   status: 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'declined';
   tokenAmount: number;

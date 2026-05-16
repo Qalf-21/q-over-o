@@ -52,6 +52,12 @@ export const SessionCard: React.FC<SessionCardProps> = ({
     hour: '2-digit',
     minute: '2-digit'
   });
+  const formattedEndTime = session.scheduledEnd
+    ? new Date(session.scheduledEnd).toLocaleTimeString('en-KE', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    : null;
 
   return (
     <motion.div
@@ -84,7 +90,7 @@ export const SessionCard: React.FC<SessionCardProps> = ({
       <div className="space-y-2 mb-4">
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <Clock className="w-4 h-4" />
-          <span>{formattedDate} at {formattedTime}</span>
+          <span>{formattedDate} at {formattedEndTime ? `${formattedTime} - ${formattedEndTime}` : formattedTime}</span>
           <span className="text-gray-400">({session.duration} mins)</span>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">

@@ -5,7 +5,7 @@
 //      and "+ Add" button, since they can also book and pay other tutors.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Bell, CheckCheck, Menu, Plus, Zap } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { User } from '../../auth/types';
@@ -39,6 +39,11 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
+    typeof Notification === 'undefined' ? 'denied' : Notification.permission,
+  );
+  const knownNotificationIds = useRef<Set<string>>(new Set());
+  const hasLoadedNotifications = useRef(false);
 
   useEffect(() => {
     if (!showWallet) return; // no need to fetch if we won't display it
@@ -58,20 +63,69 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
     return () => { cancelled = true; };
   }, [showWallet]);
 
-  const loadNotifications = async () => {
+  const applyNotifications = useCallback((items: AppNotification[], nextUnreadCount: number) => {
+    const nextIds = new Set(items.map(notification => notification.id));
+    if (hasLoadedNotifications.current && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      items
+        .filter(notification => !notification.read && !knownNotificationIds.current.has(notification.id))
+        .slice(0, 3)
+        .forEach(notification => {
+          const browserNotification = new Notification(notification.title, {
+            body: notification.message,
+            tag: notification.id,
+          });
+          browserNotification.onclick = () => {
+            window.focus();
+            if (notification.linkUrl) navigate(notification.linkUrl);
+            browserNotification.close();
+          };
+        });
+    }
+    knownNotificationIds.current = nextIds;
+    hasLoadedNotifications.current = true;
+    setNotifications(items);
+    setUnreadCount(nextUnreadCount);
+  }, [navigate]);
+
+  const loadNotifications = useCallback(async () => {
     try {
       const { data } = await notificationApi.getNotifications();
-      setNotifications(data?.notifications || []);
-      setUnreadCount(data?.unreadCount || 0);
+      applyNotifications(data?.notifications || [], data?.unreadCount || 0);
     } catch {
-      setNotifications([]);
-      setUnreadCount(0);
+      applyNotifications([], 0);
     }
-  };
+  }, [applyNotifications]);
 
   useEffect(() => {
     loadNotifications();
-  }, []);
+    const interval = window.setInterval(loadNotifications, 30_000);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') loadNotifications();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    const streamUrl = notificationApi.getStreamUrl();
+    if (!streamUrl || typeof EventSource === 'undefined') return;
+
+    const source = new EventSource(streamUrl);
+    source.addEventListener('notifications', (event) => {
+      const payload = JSON.parse((event as MessageEvent).data) as {
+        notifications?: AppNotification[];
+        unreadCount?: number;
+      };
+      applyNotifications(payload.notifications || [], payload.unreadCount || 0);
+    });
+    source.onerror = () => {
+      source.close();
+    };
+    return () => source.close();
+  }, [applyNotifications]);
 
   const handleNotificationClick = async (notification: AppNotification) => {
     if (!notification.read) {
@@ -91,6 +145,12 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
     await notificationApi.markAllRead().catch(() => undefined);
     setUnreadCount(0);
     setNotifications(items => items.map(item => ({ ...item, read: true })));
+  };
+
+  const handleEnableBrowserNotifications = async () => {
+    if (typeof Notification === 'undefined') return;
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
   };
 
   return (
@@ -166,6 +226,17 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                     </button>
                   )}
                 </div>
+                {notificationPermission === 'default' && (
+                  <div className="px-4 py-3 border-b border-gray-100 bg-indigo-50">
+                    <button
+                      type="button"
+                      onClick={handleEnableBrowserNotifications}
+                      className="text-sm font-semibold text-indigo-700 hover:text-indigo-800"
+                    >
+                      Enable browser alerts
+                    </button>
+                  </div>
+                )}
                 <div className="max-h-96 overflow-y-auto">
                   {notifications.length === 0 ? (
                     <div className="px-4 py-8 text-center text-sm text-gray-500">No notifications</div>

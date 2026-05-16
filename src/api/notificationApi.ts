@@ -1,4 +1,7 @@
 import { apiRequest } from './client';
+import { getAuthToken } from './client';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 export type AppNotification = {
   id: string;
@@ -27,5 +30,11 @@ export const notificationApi = {
 
   async markAllRead() {
     return apiRequest<never>('/notifications/read-all', { method: 'POST' });
+  },
+
+  getStreamUrl() {
+    const token = getAuthToken();
+    if (!token) return null;
+    return `${API_BASE_URL}/notifications/stream?token=${encodeURIComponent(token)}`;
   },
 };
