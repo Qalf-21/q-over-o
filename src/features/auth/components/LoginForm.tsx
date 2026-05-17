@@ -6,7 +6,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../../shared/hooks/useAuth';
-import { authApi } from '../../../api/authApi';
 import { AuthLayout } from './AuthLayout';
 import { InputField } from '../../../shared/components/InputField';
 import { AuthButton } from '../../../shared/components/AuthButton';
@@ -51,13 +50,7 @@ export const LoginForm: React.FC = () => {
 
     try {
       await login(formData.email, formData.password);
-      // After login the stored user is up-to-date. The dashboard index
-      // (/dashboard) performs a role-aware redirect itself, so we always
-      // navigate there and let it decide.
-      const user = authApi.getStoredUser();
-      navigate(user?.role === 'tutor' ? '/dashboard/overview' : '/dashboard/discover', {
-        replace: true,
-      });
+      navigate('/dashboard', { replace: true });
     } catch {
       // Error state is managed by AuthContext
     }

@@ -18,15 +18,19 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { authService } from '../auth/authService';
-import type { User } from './types';
+import type { AdminRole, Profile, User } from './types';
 import { ApiException } from './apiError';
 
 // ─── Context shape ────────────────────────────────────────────────────────────
 
 interface AuthContextType {
   user:            User | null;
+  profile:         Profile | null;
+  adminRole:       AdminRole | null;
+  isAdmin:         boolean;
   isAuthenticated: boolean;
   isLoading:       boolean;
+  authReady:       boolean;
   login:           (email: string, password: string) => Promise<void>;
   register:        (firstName: string, lastName: string, email: string, password: string) => Promise<void>;
   refreshUser:     () => Promise<void>;
@@ -54,6 +58,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error,     setError]     = useState<string | null>(null);
 
+  const authDebug = (event: string, payload: Record<string, unknown> = {}) => {
+    if (import.meta.env.DEV) {
+      console.info('[auth]', event, payload);
+    }
+  };
+
   // ── Session restoration on mount ────────────────────────────────────────────
   useEffect(() => {
     const initAuth = async () => {
@@ -62,12 +72,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // No credentials in storage → guest user, nothing to do
       if (!storedToken || !storedUser) {
+        authDebug('init.guest');
         setIsLoading(false);
         return;
       }
 
       // Optimistically set the stored user so the UI doesn't flash blank
       setUser(storedUser);
+      authDebug('init.stored_user', {
+        userId: storedUser.id,
+        role: storedUser.role,
+        adminRole: storedUser.adminRole,
+        isAdmin: storedUser.isAdmin,
+      });
 
       try {
         // Validate the stored access token against the server.
@@ -79,6 +96,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Sync with latest server-side profile (role changes, name updates, etc.)
         setUser(data.user);
         localStorage.setItem('user', JSON.stringify(data.user));
+        authDebug('init.server_user', {
+          userId: data.user.id,
+          role: data.user.role,
+          adminRole: data.user.adminRole,
+          isAdmin: data.user.isAdmin,
+        });
       } catch {
         // If we end up here it means both the original request AND the automatic
         // refresh attempt failed (i.e., the Supabase refresh token is also dead).
@@ -102,6 +125,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setError(null);
       const response = await authService.login({ email, password });
       setUser(response.data.user);
+      authDebug('login.done', {
+        userId: response.data.user.id,
+        role: response.data.user.role,
+        adminRole: response.data.user.adminRole,
+        isAdmin: response.data.user.isAdmin,
+      });
     } catch (err) {
       const message =
         err instanceof ApiException
@@ -160,16 +189,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const { data } = await authService.getMe();
     setUser(data.user);
     localStorage.setItem('user', JSON.stringify(data.user));
+    authDebug('refresh_user.done', {
+      userId: data.user.id,
+      role: data.user.role,
+      adminRole: data.user.adminRole,
+      isAdmin: data.user.isAdmin,
+    });
   };
 
   const clearError = (): void => setError(null);
+  const profile = (user ? {
+    id: user.id,
+    email: user.email,
+    first_name: user.firstName,
+    last_name: user.lastName,
+    role: user.role,
+  } : null) as Profile | null;
+  const adminRole = user?.adminRole ?? null;
+  const isAdmin = Boolean(adminRole || user?.isAdmin);
 
   // ── Context value ────────────────────────────────────────────────────────────
 
   const value: AuthContextType = {
     user,
+    profile,
+    adminRole,
+    isAdmin,
     isAuthenticated: !!user,
     isLoading,
+    authReady: !isLoading,
     login,
     register,
     refreshUser,

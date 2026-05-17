@@ -19,7 +19,7 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({
   children,
   allowedAdminRoles = ADMIN_ROLES,
 }) => {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading, adminRole, isAdmin } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -34,11 +34,12 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({
   }
 
   if (!isAuthenticated) {
+    if (import.meta.env.DEV) console.info('[auth] admin_route.redirect_login');
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  const adminRole = user?.adminRole;
-  if (!adminRole || !allowedAdminRoles.includes(adminRole)) {
+  if (!isAdmin || !adminRole || !allowedAdminRoles.includes(adminRole)) {
+    if (import.meta.env.DEV) console.info('[auth] admin_route.redirect_dashboard', { isAdmin, adminRole });
     return <Navigate to="/dashboard" replace />;
   }
 

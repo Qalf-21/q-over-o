@@ -27,6 +27,11 @@ import { AdminOverview } from '../features/admin/pages/AdminOverview';
 import { AdminSectionPage } from '../features/admin/pages/AdminSectionPage';
 import { AdminAuditLogs } from '../features/admin/pages/AdminAuditLogs';
 import { AdminSubjectRequests } from '../features/admin/pages/AdminSubjectRequests';
+import { AdminUsers } from '../features/admin/pages/AdminUsers';
+import { AdminTutors } from '../features/admin/pages/AdminTutors';
+import { AdminSessions } from '../features/admin/pages/AdminSessions';
+import { AdminWallets } from '../features/admin/pages/AdminWallets';
+import { AdminReports } from '../features/admin/pages/AdminReports';
 import { adminApi } from '../api/adminApi';
 import { JaasMeetingPage } from '../features/sessions/JaasMeetingPage';
 
@@ -34,10 +39,13 @@ import { JaasMeetingPage } from '../features/sessions/JaasMeetingPage';
 // Tutors  → /dashboard/overview
 // Tutees  → /dashboard/discover
 const DashboardIndex: React.FC = () => {
-  const { user } = useAuth();
-  if (user?.adminRole) {
+  const { user, isAdmin, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (isAdmin) {
+    if (import.meta.env.DEV) console.info('[auth] dashboard.redirect', { target: '/dashboard/admin' });
     return <Navigate to="/dashboard/admin" replace />;
   }
+  if (import.meta.env.DEV) console.info('[auth] dashboard.redirect', { target: user?.role === 'tutor' ? '/dashboard/overview' : '/dashboard/discover', role: user?.role });
   return (
     <Navigate
       to={user?.role === 'tutor' ? '/dashboard/overview' : '/dashboard/discover'}
@@ -47,17 +55,17 @@ const DashboardIndex: React.FC = () => {
 };
 
 const AdminDashboard: React.FC = () => (
-  <AdminRoute allowedAdminRoles={['super_admin']}>
+  <AdminRoute>
     <AdminLayout>
       <Routes>
         <Route index element={<AdminOverview />} />
-        <Route path="users" element={<AdminSectionPage title="Users" description="Manage learner and tutor accounts." loadRows={adminApi.getUsers} />} />
-        <Route path="tutors" element={<AdminSectionPage title="Tutors" description="Review tutor profiles, qualifications, and marketplace state." loadRows={adminApi.getTutors} />} />
-        <Route path="sessions" element={<AdminSectionPage title="Sessions" description="Monitor bookings, statuses, and session operations." loadRows={adminApi.getSessions} />} />
-        <Route path="wallets" element={<AdminSectionPage title="Wallets" description="Inspect token balances and wallet health." loadRows={adminApi.getWallets} />} />
+        <Route path="users" element={<AdminUsers />} />
+        <Route path="tutors" element={<AdminTutors />} />
+        <Route path="sessions" element={<AdminSessions />} />
+        <Route path="wallets" element={<AdminWallets />} />
         <Route path="reviews" element={<AdminSectionPage title="Reviews" description="Moderate review content and rating signals." loadRows={adminApi.getReviews} />} />
         <Route path="subject-requests" element={<AdminSubjectRequests />} />
-        <Route path="reports" element={<AdminSectionPage title="Reports" description="Handle abuse reports, escalations, and trust workflows." />} />
+        <Route path="reports" element={<AdminReports />} />
         <Route path="notifications" element={<AdminSectionPage title="Notifications" description="Prepare platform announcements and admin-triggered messages." />} />
         <Route path="settings" element={<AdminSectionPage title="Settings" description="Configure admin policies, roles, and operational controls." />} />
         <Route path="audit-logs" element={<AdminAuditLogs />} />

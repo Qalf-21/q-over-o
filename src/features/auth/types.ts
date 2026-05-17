@@ -12,6 +12,17 @@ export interface User {
   createdAt: string;
 }
 
+export interface Profile {
+  id: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  role: 'tutee' | 'tutor' | string;
+  is_tutor?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export type AdminRole =
   | 'super_admin'
   | 'support_admin'
@@ -78,7 +89,11 @@ export interface ApiError {
 // Auth state (for context typing if needed later)
 export interface AuthState {
   user: User | null;
+  profile: Profile | null;
+  adminRole: AdminRole | null;
+  isAdmin: boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
+  authReady: boolean;
   error: string | null;
 }

@@ -16,6 +16,7 @@ import {
   updateTokens,
 } from './client';
 import type {
+  AdminRole,
   AuthResponse,
   GetMeResponse,
   LoginData,
@@ -25,14 +26,24 @@ import type {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const normalizeUser = (user: Record<string, unknown>): User => ({
-  id:        String(user.id ?? ''),
-  firstName: String(user.firstName ?? user.first_name  ?? (user.profile as Record<string,unknown>)?.first_name ?? ''),
-  lastName:  String(user.lastName  ?? user.last_name   ?? (user.profile as Record<string,unknown>)?.last_name  ?? ''),
-  email:     String(user.email     ?? ''),
-  role:      (String(user.role ?? (user.profile as Record<string,unknown>)?.role ?? 'tutee')) as 'tutee' | 'tutor',
-  createdAt: String(user.createdAt ?? user.created_at  ?? ''),
-});
+const adminRoles: AdminRole[] = ['super_admin', 'support_admin', 'finance_admin', 'moderator', 'analytics_admin'];
+
+const normalizeUser = (user: Record<string, unknown>): User => {
+  const profile = (user.profile as Record<string, unknown> | undefined) ?? {};
+  const rawRole = String(user.role ?? profile.role ?? 'tutee');
+  const adminRoleValue = user.adminRole ?? user.admin_role;
+  const adminRole = adminRoles.includes(adminRoleValue as AdminRole) ? adminRoleValue as AdminRole : null;
+  return {
+    id:        String(user.id ?? ''),
+    firstName: String(user.firstName ?? user.first_name  ?? profile.first_name ?? ''),
+    lastName:  String(user.lastName  ?? user.last_name   ?? profile.last_name  ?? ''),
+    email:     String(user.email     ?? profile.email ?? ''),
+    role:      (rawRole === 'tutor' ? 'tutor' : 'tutee'),
+    adminRole,
+    isAdmin:   Boolean(adminRole || user.isAdmin || user.is_admin),
+    createdAt: String(user.createdAt ?? user.created_at ?? profile.created_at ?? ''),
+  };
+};
 
 // ─── authApi ──────────────────────────────────────────────────────────────────
 

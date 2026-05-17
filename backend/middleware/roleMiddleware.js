@@ -1,4 +1,5 @@
 const { AppError } = require('../utils/errorHandler');
+const { ADMIN_ROLES } = require('../utils/authResolver');
 
 const requireRole = (...allowedRoles) => {
   return (req, res, next) => {
@@ -24,15 +25,16 @@ const requireRole = (...allowedRoles) => {
 const requireTutor = requireRole('tutor');
 const requireTutee = requireRole('tutee');
 const requireAdminRole = (...allowedAdminRoles) => {
+  const roles = allowedAdminRoles.length ? allowedAdminRoles : ADMIN_ROLES;
   return (req, res, next) => {
     if (!req.user) {
       throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
     }
 
     const adminRole = req.user.adminRole || req.user.admin_role;
-    if (!adminRole || !allowedAdminRoles.includes(adminRole)) {
+    if (!adminRole || !roles.includes(adminRole)) {
       throw new AppError(
-        `Admin access denied. Required admin role: ${allowedAdminRoles.join(' or ')}`,
+        `Admin access denied. Required admin role: ${roles.join(' or ')}`,
         403,
         'ADMIN_FORBIDDEN'
       );
@@ -42,6 +44,7 @@ const requireAdminRole = (...allowedAdminRoles) => {
   };
 };
 
+const requireAdmin = requireAdminRole(...ADMIN_ROLES);
 const requireSuperAdmin = requireAdminRole('super_admin');
 
-module.exports = { requireRole, requireTutor, requireTutee, requireAdminRole, requireSuperAdmin };
+module.exports = { requireRole, requireTutor, requireTutee, requireAdmin, requireAdminRole, requireSuperAdmin };

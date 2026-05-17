@@ -7,17 +7,7 @@
 
 const supabase = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
-
-const getAdminRole = async (userId) => {
-  const { data: admin } = await supabase
-    .from('admins')
-    .select('role, is_active')
-    .eq('user_id', userId)
-    .eq('is_active', true)
-    .maybeSingle();
-
-  return admin?.role ?? null;
-};
+const { authLog, resolveAuthUser } = require('../utils/authResolver');
 
 // ─── Register ─────────────────────────────────────────────────────────────────
 
@@ -112,14 +102,8 @@ exports.login = asyncHandler(async (req, res) => {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) throw new AppError(error.message, 401, 'INVALID_CREDENTIALS');
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id, email, first_name, last_name, role, is_tutor, created_at, updated_at')
-    .eq('id', data.user.id)
-    .single();
-
-  const adminRole = await getAdminRole(data.user.id);
+  authLog('auth.login.session_created', { userId: data.user.id, email: data.user.email });
+  const authUser = await resolveAuthUser(data.user);
 
   // ── Ensure wallet exists for users who registered before this fix ────────────
   await supabase
@@ -134,18 +118,7 @@ exports.login = asyncHandler(async (req, res) => {
     message: 'Login successful',
     data: {
       user: {
-        id:           data.user.id,
-        aud:          data.user.aud,
-        email:        data.user.email,
-        app_metadata: data.user.app_metadata,
-        created_at:   data.user.created_at,
-        updated_at:   data.user.updated_at,
-        profile,
-        role:         profile?.role ?? 'tutee',
-        adminRole,
-        isAdmin:      Boolean(adminRole),
-        first_name:   profile?.first_name,
-        last_name:    profile?.last_name,
+        ...authUser,
       },
       token:         data.session.access_token,
       refresh_token: data.session.refresh_token,

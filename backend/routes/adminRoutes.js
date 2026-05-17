@@ -5,33 +5,51 @@
 
 const express = require('express');
 const { authMiddleware }   = require('../middleware/authMiddleware');
-const { requireSuperAdmin } = require('../middleware/roleMiddleware');
+const { requireAdmin } = require('../middleware/roleMiddleware');
 const {
   getAdminOverview,   // NEW — full metrics endpoint
   getAuditLogs,
   getOverview,        // legacy thin overview
+  getReports,
   getReviews,
   getSessions,
   getSubjectRequests,
   getTutors,
   getUsers,
   getWallets,
+  updateUserStatus,
+  deleteUser,
+  promoteAdmin,
+  revokeAdmin,
+  updateTutorStatus,
+  verifyTutor,
+  cancelAdminSession,
+  resolveSessionDispute,
   approveSubjectRequest,
   rejectSubjectRequest,
 } = require('../controllers/adminController');
 
 const router = express.Router();
 
-router.use(authMiddleware, requireSuperAdmin);
+router.use(authMiddleware, requireAdmin);
 
 // ── New full overview (replaces the thin /overview) ──────────────────────────
 router.get('/overview/full', getAdminOverview);
 
 // ── Legacy / section routes (kept, not removed) ──────────────────────────────
 router.get('/overview',    getOverview);
+router.get('/reports',     getReports);
 router.get('/users',       getUsers);
+router.patch('/users/:id/status', updateUserStatus);
+router.delete('/users/:id', deleteUser);
+router.post('/users/:id/admin', promoteAdmin);
+router.delete('/users/:id/admin', revokeAdmin);
 router.get('/tutors',      getTutors);
+router.patch('/tutors/:id/status', updateTutorStatus);
+router.patch('/tutors/:id/verify', verifyTutor);
 router.get('/sessions',    getSessions);
+router.post('/sessions/:id/cancel', cancelAdminSession);
+router.post('/sessions/:id/resolve-dispute', resolveSessionDispute);
 router.get('/wallets',     getWallets);
 router.get('/reviews',     getReviews);
 router.get('/subject-requests', getSubjectRequests);
