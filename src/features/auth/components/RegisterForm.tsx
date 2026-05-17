@@ -10,10 +10,14 @@ import { AuthLayout } from './AuthLayout';
 import { InputField } from '../../../shared/components/InputField';
 import { AuthButton } from '../../../shared/components/AuthButton';
 import { User, Mail, Lock, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { email as emailRule, minLength, required, useFormValidation } from '../../../shared/hooks/useFormValidation';
+import { parseApiError } from '../../../shared/utils/apiError';
+import { useToast } from '../../../shared/components/Toast';
 
 export const RegisterForm: React.FC = () => {
   const navigate = useNavigate();
-  const { register, error, clearError, isLoading } = useAuth();
+  const { register, clearError, isLoading } = useAuth();
+  const { showToast } = useToast();
   
   const [formData, setFormData] = useState({
     first_name: '',
@@ -23,62 +27,44 @@ export const RegisterForm: React.FC = () => {
     confirmPassword: ''
   });
   
-  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-  
-
-  const validate = (): boolean => {
-    const errors: Record<string, string> = {};
-    
-    if (!formData.first_name.trim()) {
-      errors.first_name = 'First name is required';
-    } else if (formData.first_name.trim().length < 2) {
-      errors.first_name = 'First name must be at least 2 characters';
-    }
-
-    if (!formData.last_name.trim()) {
-      errors.last_name = 'Last name is required';
-    } else if (formData.last_name.trim().length < 2) {
-      errors.last_name = 'Last name must be at least 2 characters';
-    }
-    
-    if (!formData.email.trim()) {
-      errors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      errors.email = 'Please enter a valid university email';
-    }
-    
-    if (!formData.password) {
-      errors.password = 'Password is required';
-    } else if (formData.password.length < 8) {
-      errors.password = 'Password must be at least 8 characters';
-    }
-    
-    if (formData.password !== formData.confirmPassword) {
-      errors.confirmPassword = 'Passwords do not match';
-    }
-    
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
+  const { errors, validateField, validateForm, clearFieldError, setFieldErrors } = useFormValidation(formData, {
+    first_name: [required('First name'), minLength('First name', 2)],
+    last_name: [required('Last name'), minLength('Last name', 2)],
+    email: [required('Email'), emailRule],
+    password: [required('Password'), minLength('Password', 8)],
+    confirmPassword: [(_, values) => values.password === values.confirmPassword ? '' : 'Passwords do not match'],
+  });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    if (validationErrors[name]) {
-      setValidationErrors(prev => ({ ...prev, [name]: '' }));
-    }
-    if (error) clearError();
+    clearFieldError(name as keyof typeof formData);
+    clearError();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!validateForm()) return;
     
     try {
       await register(formData.first_name, formData.last_name, formData.email, formData.password);
+      showToast({ type: 'success', title: 'Account created', message: 'Welcome to Q-over-o.' });
       navigate('/dashboard', { replace: true });
-    } catch {
-      // Error handled by context
+    } catch (err) {
+      const parsed = parseApiError(err, 'Could not create your account. Please try again.');
+      setFieldErrors(parsed.fieldErrors);
+      if (!Object.keys(parsed.fieldErrors).length) {
+        setFieldErrors({ email: parsed.message });
+      }
+      if (parsed.retryable) {
+        showToast({
+          type: 'error',
+          title: 'Registration failed',
+          message: parsed.message,
+          duration: 0,
+          action: { label: 'Retry', onClick: () => void register(formData.first_name, formData.last_name, formData.email, formData.password) },
+        });
+      }
     }
   };
 
@@ -90,12 +76,6 @@ export const RegisterForm: React.FC = () => {
       backTo="/"
     >
       <form onSubmit={handleSubmit} className="space-y-5">
-        {error && (
-          <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm font-medium">
-            {error}
-          </div>
-        )}
-
         <InputField
           id="first_name"
           name="first_name"
@@ -105,7 +85,8 @@ export const RegisterForm: React.FC = () => {
           onChange={handleChange}
           placeholder="John"
           icon={User}
-          error={validationErrors.first_name}
+          error={errors.first_name}
+          onBlur={() => validateField('first_name')}
           required
           autoComplete="given-name"
           disabled={isLoading}
@@ -120,7 +101,8 @@ export const RegisterForm: React.FC = () => {
           onChange={handleChange}
           placeholder="Doe"
           icon={User}
-          error={validationErrors.last_name}
+          error={errors.last_name}
+          onBlur={() => validateField('last_name')}
           required
           autoComplete="family-name"
           disabled={isLoading}
@@ -135,7 +117,8 @@ export const RegisterForm: React.FC = () => {
           onChange={handleChange}
           placeholder="john@university.ac.ke"
           icon={Mail}
-          error={validationErrors.email}
+          error={errors.email}
+          onBlur={() => validateField('email')}
           required
           autoComplete="email"
           disabled={isLoading}
@@ -150,7 +133,8 @@ export const RegisterForm: React.FC = () => {
           onChange={handleChange}
           placeholder="Min. 8 characters"
           icon={Lock}
-          error={validationErrors.password}
+          error={errors.password}
+          onBlur={() => validateField('password')}
           required
           autoComplete="new-password"
           disabled={isLoading}
@@ -165,7 +149,8 @@ export const RegisterForm: React.FC = () => {
           onChange={handleChange}
           placeholder="Re-enter password"
           icon={Lock}
-          error={validationErrors.confirmPassword}
+          error={errors.confirmPassword}
+          onBlur={() => validateField('confirmPassword')}
           required
           autoComplete="new-password"
           disabled={isLoading}

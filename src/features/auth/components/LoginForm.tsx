@@ -10,49 +10,50 @@ import { AuthLayout } from './AuthLayout';
 import { InputField } from '../../../shared/components/InputField';
 import { AuthButton } from '../../../shared/components/AuthButton';
 import { Mail, Lock, ArrowRight } from 'lucide-react';
+import { email as emailRule, required, useFormValidation } from '../../../shared/hooks/useFormValidation';
+import { parseApiError } from '../../../shared/utils/apiError';
+import { useToast } from '../../../shared/components/Toast';
 
 export const LoginForm: React.FC = () => {
   const navigate = useNavigate();
-  const { login, error, clearError, isLoading } = useAuth();
+  const { login, clearError, isLoading } = useAuth();
+  const { showToast } = useToast();
 
   const [formData, setFormData] = useState({ email: '', password: '' });
-  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-
-  const validate = (): boolean => {
-    const errors: Record<string, string> = {};
-
-    if (!formData.email.trim()) {
-      errors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      errors.email = 'Please enter a valid email';
-    }
-
-    if (!formData.password) {
-      errors.password = 'Password is required';
-    }
-
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
+  const { errors, validateField, validateForm, clearFieldError, setFieldErrors } = useFormValidation(formData, {
+    email: [required('Email'), emailRule],
+    password: [required('Password')],
+  });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
-    if (validationErrors[name]) {
-      setValidationErrors((prev) => ({ ...prev, [name]: '' }));
-    }
-    if (error) clearError();
+    clearFieldError(name as keyof typeof formData);
+    clearError();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!validateForm()) return;
 
     try {
       await login(formData.email, formData.password);
       navigate('/dashboard', { replace: true });
-    } catch {
-      // Error state is managed by AuthContext
+    } catch (err) {
+      const parsed = parseApiError(err, 'Could not sign in. Check your details and try again.');
+      setFieldErrors(parsed.fieldErrors);
+      if (!Object.keys(parsed.fieldErrors).length) {
+        setFieldErrors({ password: parsed.message });
+      }
+      if (parsed.retryable) {
+        showToast({
+          type: 'error',
+          title: 'Sign in failed',
+          message: parsed.message,
+          duration: 0,
+          action: { label: 'Retry', onClick: () => void login(formData.email, formData.password) },
+        });
+      }
     }
   };
 
@@ -64,12 +65,6 @@ export const LoginForm: React.FC = () => {
       backTo="/"
     >
       <form onSubmit={handleSubmit} className="space-y-5">
-        {error && (
-          <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm font-medium">
-            {error}
-          </div>
-        )}
-
         <InputField
           id="email"
           name="email"
@@ -79,7 +74,8 @@ export const LoginForm: React.FC = () => {
           onChange={handleChange}
           placeholder="you@university.ac.ke"
           icon={Mail}
-          error={validationErrors.email}
+          error={errors.email}
+          onBlur={() => validateField('email')}
           required
           autoComplete="email"
           disabled={isLoading}
@@ -95,7 +91,8 @@ export const LoginForm: React.FC = () => {
             onChange={handleChange}
             placeholder="Enter your password"
             icon={Lock}
-            error={validationErrors.password}
+            error={errors.password}
+            onBlur={() => validateField('password')}
             required
             autoComplete="current-password"
             disabled={isLoading}

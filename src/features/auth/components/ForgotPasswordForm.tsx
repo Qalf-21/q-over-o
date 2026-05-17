@@ -5,40 +5,31 @@ import { InputField } from '../../../shared/components/InputField';
 import { AuthButton } from '../../../shared/components/AuthButton';
 import { authApi } from '../../../api/authApi';
 import { Mail, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { email as emailRule, required, useFormValidation } from '../../../shared/hooks/useFormValidation';
+import { parseApiError } from '../../../shared/utils/apiError';
+import { useToast } from '../../../shared/components/Toast';
 
 export const ForgotPasswordForm: React.FC = () => {
   const [email, setEmail]           = useState('');
   const [isLoading, setIsLoading]   = useState(false);
   const [submitted, setSubmitted]   = useState(false);
-  const [error, setError]           = useState<string | null>(null);
-  const [fieldError, setFieldError] = useState('');
-
-  const validate = (): boolean => {
-    if (!email.trim()) {
-      setFieldError('Email is required');
-      return false;
-    }
-    if (!/\S+@\S+\.\S+/.test(email)) {
-      setFieldError('Please enter a valid email address');
-      return false;
-    }
-    setFieldError('');
-    return true;
-  };
+  const { showToast } = useToast();
+  const formData = { email };
+  const { errors, validateField, validateForm, clearFieldError, setFieldErrors } = useFormValidation(formData, {
+    email: [required('Email'), emailRule],
+  });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setEmail(e.target.value);
-    if (fieldError) setFieldError('');
-    if (error) setError(null);
+    clearFieldError('email');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!validateForm()) return;
 
     try {
       setIsLoading(true);
-      setError(null);
       // redirectTo tells Supabase where to send the user after they click
       // the link in their email. Adjust to match your deployed domain.
       const redirectTo =
@@ -47,12 +38,19 @@ export const ForgotPasswordForm: React.FC = () => {
           : undefined;
       await authApi.resetPassword(email.trim().toLowerCase(), redirectTo);
       setSubmitted(true);
+      showToast({ type: 'success', title: 'Reset link sent', message: 'Check your inbox for the reset email.' });
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Something went wrong. Please try again.',
-      );
+      const parsed = parseApiError(err, 'Could not send the reset link.');
+      setFieldErrors(Object.keys(parsed.fieldErrors).length ? parsed.fieldErrors : { email: parsed.message });
+      if (parsed.retryable) {
+        showToast({
+          type: 'error',
+          title: 'Reset email failed',
+          message: parsed.message,
+          duration: 0,
+          action: { label: 'Retry', onClick: () => void authApi.resetPassword(email.trim().toLowerCase()) },
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -111,12 +109,6 @@ export const ForgotPasswordForm: React.FC = () => {
       backTo="/login"
     >
       <form onSubmit={handleSubmit} className="space-y-5">
-        {error && (
-          <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm font-medium">
-            {error}
-          </div>
-        )}
-
         <InputField
           id="email"
           name="email"
@@ -126,7 +118,8 @@ export const ForgotPasswordForm: React.FC = () => {
           onChange={handleChange}
           placeholder="you@university.ac.ke"
           icon={Mail}
-          error={fieldError}
+          error={errors.email}
+          onBlur={() => validateField('email')}
           required
           autoComplete="email"
           disabled={isLoading}

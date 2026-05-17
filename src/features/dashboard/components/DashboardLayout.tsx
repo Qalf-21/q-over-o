@@ -10,7 +10,6 @@ import { useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TopNavbar } from './TopNavbar';
 import { useAuth } from '../../../shared/hooks/useAuth';
-import { ToastProvider } from '../../../shared/components/Toast';
 import { DepositModal } from '../../wallet/components/DepositModal';
 
 interface DashboardLayoutProps {
@@ -31,8 +30,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   const canDeposit = !isTutor || isLearningMode;
 
   return (
-    <ToastProvider>
-      <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
         {/* Sidebar — desktop always visible, mobile overlay */}
         <div className="hidden lg:flex lg:flex-shrink-0">
           <div className="w-64 flex flex-col border-r border-gray-200 bg-white">
@@ -75,7 +73,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
             onClose={() => setShowDeposit(false)}
           />
         )}
-      </div>
-    </ToastProvider>
+    </div>
   );
 };

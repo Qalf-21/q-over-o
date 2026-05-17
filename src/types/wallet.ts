@@ -95,6 +95,10 @@ export interface ToastPayload {
   title: string;
   message?: string;
   duration?: number;         // ms; 0 = persistent
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
 }
 
 // ── Deposit Modal Steps ───────────────────────────────────────────────────────

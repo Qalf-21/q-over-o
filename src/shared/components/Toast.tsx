@@ -24,7 +24,7 @@ interface ToastItem extends ToastPayload {
 }
 
 interface ToastContextValue {
-  showToast: (payload: ToastPayload) => void;
+  showToast: (payload: ToastPayload) => string;
   dismissToast: (id: string) => void;
 }
 
@@ -77,7 +77,7 @@ const TYPE_CONFIG: Record<
 
 const DEFAULT_DURATION: Record<ToastType, number> = {
   success: 4000,
-  error:   6000,
+  error:   0,
   pending: 0,       // persistent until dismissed
   warning: 5000,
   info:    4000,
@@ -120,6 +120,15 @@ const ToastItem: React.FC<{ toast: ToastItem; onClose: () => void }> = ({
         <p className={`text-sm font-semibold ${cfg.titleColor}`}>{toast.title}</p>
         {toast.message && (
           <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{toast.message}</p>
+        )}
+        {toast.action && (
+          <button
+            type="button"
+            onClick={toast.action.onClick}
+            className="mt-3 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-700 transition-colors"
+          >
+            {toast.action.label}
+          </button>
         )}
       </div>
 

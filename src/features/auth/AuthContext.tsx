@@ -19,7 +19,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { authService } from '../auth/authService';
 import type { AdminRole, Profile, User } from './types';
-import { ApiException } from './apiError';
+import { parseApiError } from '../../shared/utils/apiError';
 
 // ─── Context shape ────────────────────────────────────────────────────────────
 
@@ -132,12 +132,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         isAdmin: response.data.user.isAdmin,
       });
     } catch (err) {
-      const message =
-        err instanceof ApiException
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : 'Login failed. Something went wrong.';
+      const message = parseApiError(err, 'Login failed. Something went wrong.').message;
       setError(message);
       throw err;
     } finally {
@@ -162,12 +157,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
       setUser(response.data.user);
     } catch (err) {
-      const message =
-        err instanceof ApiException
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : 'Registration failed. Something went wrong.';
+      const message = parseApiError(err, 'Registration failed. Something went wrong.').message;
       setError(message);
       throw err;
     } finally {

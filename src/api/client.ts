@@ -14,6 +14,8 @@
 // replayed automatically once the refresh resolves — no duplicate refreshes.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { ApiException } from '../features/auth/apiError';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -21,6 +23,8 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 export type ApiResponse<T> = {
   success: boolean;
   message?: string;
+  code?: string;
+  errors?: Record<string, string>;
   data?: T;
   session_id?: string;
 };
@@ -92,7 +96,7 @@ const executeRefresh = async (): Promise<string> => {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body?.message ?? 'Session refresh failed');
+    throw new ApiException(body?.message ?? 'Session refresh failed', res.status, body?.errors, body?.code);
   }
 
   const body: ApiResponse<{ access_token: string; refresh_token: string }> = await res.json();
@@ -173,5 +177,11 @@ export async function apiRequest<T>(
     message: `Request failed with status ${response.status}`,
   }));
 
-  throw new Error((result as { message?: string }).message ?? `Request failed with status ${response.status}`);
+  const errorBody = result as { message?: string; code?: string; errors?: Record<string, string> };
+  throw new ApiException(
+    errorBody.message ?? `Request failed with status ${response.status}`,
+    response.status,
+    errorBody.errors,
+    errorBody.code,
+  );
 }

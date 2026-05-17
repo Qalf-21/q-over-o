@@ -9,6 +9,7 @@ interface InputFieldProps {
   label: string;
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
+  onBlur?: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => void;
   placeholder?: string;
   error?: string;
   icon?: LucideIcon;
@@ -31,7 +32,8 @@ export const InputField: React.FC<InputFieldProps> = ({
   required = false,
   disabled = false,
   autoComplete,
-  options
+  options,
+  onBlur,
 }) => {
   const [showPassword, setShowPassword] = React.useState(false);
   const isPassword = type === 'password';
@@ -61,6 +63,7 @@ export const InputField: React.FC<InputFieldProps> = ({
             name={name}
             value={value}
             onChange={onChange}
+            onBlur={onBlur}
             disabled={disabled}
             className={`
               w-full px-4 py-3 rounded-xl border-2 bg-white
@@ -86,9 +89,12 @@ export const InputField: React.FC<InputFieldProps> = ({
             type={inputType}
             value={value}
             onChange={onChange}
+            onBlur={onBlur}
             placeholder={placeholder}
             disabled={disabled}
             autoComplete={autoComplete}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? `${id}-error` : undefined}
             className={`
               w-full px-4 py-3 rounded-xl border-2 bg-white
               transition-all duration-200 outline-none
@@ -118,6 +124,7 @@ export const InputField: React.FC<InputFieldProps> = ({
 
       {error && (
         <motion.p 
+          id={`${id}-error`}
           initial={{ opacity: 0, y: -5 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-sm text-red-600 font-medium"
