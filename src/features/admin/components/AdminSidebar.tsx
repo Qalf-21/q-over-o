@@ -5,6 +5,7 @@ import {
   Bell,
   ClipboardList,
   FileWarning,
+  BarChart3,
   LayoutDashboard,
   MessageSquare,
   Settings,
@@ -14,6 +15,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
+import { useLogoNavigation } from '../../../shared/hooks/useLogoNavigation';
 
 interface AdminSidebarProps {
   onClose: () => void;
@@ -27,16 +29,24 @@ const navItems = [
   { path: '/dashboard/admin/wallets', icon: Wallet, label: 'Wallets' },
   { path: '/dashboard/admin/reviews', icon: MessageSquare, label: 'Reviews' },
   { path: '/dashboard/admin/subject-requests', icon: Tags, label: 'Subject Requests' },
-  { path: '/dashboard/admin/reports', icon: FileWarning, label: 'Reports' },
+  { path: '/dashboard/admin/reports/analytics', icon: BarChart3, label: 'Analytics Dashboard' },
+  { path: '/dashboard/admin/reports/financial', icon: Wallet, label: 'Financial Reports' },
+  { path: '/dashboard/admin/reports/sessions', icon: Activity, label: 'Session Reports' },
+  { path: '/dashboard/admin/reports/users', icon: Users, label: 'User Reports' },
+  { path: '/dashboard/admin/reports/exceptions', icon: FileWarning, label: 'Exception Reports' },
+  { path: '/dashboard/admin/reports/qualifications', icon: Shield, label: 'Qualification Reports' },
   { path: '/dashboard/admin/notifications', icon: Bell, label: 'Notifications' },
   { path: '/dashboard/admin/settings', icon: Settings, label: 'Settings' },
   { path: '/dashboard/admin/audit-logs', icon: ClipboardList, label: 'Audit Logs' },
 ];
 
-export const AdminSidebar: React.FC<AdminSidebarProps> = ({ onClose }) => (
+export const AdminSidebar: React.FC<AdminSidebarProps> = ({ onClose }) => {
+  const logoDestination = useLogoNavigation();
+
+  return (
   <aside className="flex h-full flex-col border-r border-white/10 bg-slate-950/95 text-white backdrop-blur-xl">
     <div className="flex items-center justify-between border-b border-white/10 p-6">
-      <NavLink to="/dashboard/admin" className="flex items-center gap-3" onClick={onClose}>
+      <NavLink to={logoDestination} className="flex items-center gap-3" onClick={onClose} aria-label="Q-over-o admin home">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-900/40">
           <Shield className="h-6 w-6 text-white" />
         </div>
@@ -78,4 +88,5 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ onClose }) => (
       ))}
     </nav>
   </aside>
-);
+  );
+};

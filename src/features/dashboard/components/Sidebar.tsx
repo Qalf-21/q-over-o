@@ -8,6 +8,7 @@ import {
   Calendar,
   Wallet,
   Clock,
+  BarChart3,
   LogOut,
   X,
   GraduationCap,
@@ -16,6 +17,7 @@ import type { User as UserType } from '../../auth/types';
 import { userApi } from '../../../api/userApi';
 import { useAuth } from '../../../shared/hooks/useAuth';
 import { BecomeTutorModal } from './BecomeTutorModal';
+import { Logo } from '../../../shared/components/Logo';
 
 interface SidebarProps {
   user: UserType | null;
@@ -41,6 +43,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
     { path: '/dashboard/sessions',     icon: Calendar,        label: 'Sessions' },
     { path: '/dashboard/availability', icon: Clock,           label: 'Availability' },
     { path: '/dashboard/earnings',     icon: Wallet,          label: 'Earnings' },
+    { path: '/dashboard/reports/earnings', icon: BarChart3,   label: 'Earnings Reports' },
+    { path: '/dashboard/reports/performance', icon: BarChart3, label: 'Performance Reports' },
   ];
 
   const tuteeNavItems = [
@@ -58,6 +62,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
       path:  isTutor ? '/dashboard/learn/history' : '/dashboard/history',
       icon:  Clock,
       label: 'History',
+    },
+    {
+      path:  isTutor ? '/dashboard/learn/reports/sessions' : '/dashboard/reports/sessions',
+      icon:  BarChart3,
+      label: 'Session Reports',
+    },
+    {
+      path:  isTutor ? '/dashboard/learn/reports/wallet' : '/dashboard/reports/wallet',
+      icon:  Wallet,
+      label: 'Wallet Reports',
     },
   ];
 
@@ -100,14 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
       <div className="flex flex-col h-full">
         {/* ── Header ── */}
         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-          <NavLink to="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-              <GraduationCap className="w-6 h-6 text-white" />
-            </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-              Q-over-o
-            </span>
-          </NavLink>
+          <Logo size="sm" />
           <button
             onClick={onClose}
             className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"

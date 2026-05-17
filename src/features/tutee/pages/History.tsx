@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, Clock, Loader2, TrendingUp } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { BarChart3, BookOpen, Clock, Loader2, TrendingUp } from 'lucide-react';
 import type { TuteeSession } from '../tutor';
 import { sessionApi } from '../../../api/sessionApi';
 import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
@@ -54,6 +55,13 @@ export const History: React.FC = () => {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Learning History</h1>
         <p className="text-gray-600 mt-1">Track your progress and achievements</p>
+        <Link
+          to="/dashboard/reports/sessions"
+          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
+        >
+          <BarChart3 className="h-4 w-4" />
+          Session Reports
+        </Link>
       </div>
 
       {/* Stats Grid */}

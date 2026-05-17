@@ -71,8 +71,7 @@ export const ForgotPasswordForm: React.FC = () => {
               <CheckCircle2 className="w-8 h-8 text-green-500" />
             </div>
             <p className="text-sm text-gray-600 leading-relaxed max-w-xs">
-              Click the link in the email to reset your password. The link expires in 1 hour.
-              If you don't see it, check your spam folder.
+              Click the link in the email to reset your password. If you do not see it, check your spam folder.
             </p>
           </div>
 
@@ -104,7 +103,7 @@ export const ForgotPasswordForm: React.FC = () => {
   return (
     <AuthLayout
       title="Forgot password?"
-      subtitle="Enter your email and we'll send you a reset link"
+      subtitle="Enter your account email and we will send a password reset link."
       showBackButton
       backTo="/login"
     >
@@ -116,7 +115,7 @@ export const ForgotPasswordForm: React.FC = () => {
           label="Email Address"
           value={email}
           onChange={handleChange}
-          placeholder="you@university.ac.ke"
+          placeholder="you@example.com"
           icon={Mail}
           error={errors.email}
           onBlur={() => validateField('email')}

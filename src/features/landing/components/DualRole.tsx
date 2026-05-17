@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, GraduationCap, ArrowRightLeft } from 'lucide-react';
+import { ArrowRightLeft, BookOpen, CheckCircle2, GraduationCap } from 'lucide-react';
 import { useInView } from 'framer-motion';
 
 export const DualRole: React.FC = () => {
@@ -9,7 +9,7 @@ export const DualRole: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'learn' | 'teach'>('learn');
 
   return (
-    <section id="tutors" ref={ref} className="py-20 bg-gradient-to-br from-indigo-50 to-purple-50">
+    <section id="tutors" ref={ref} className="bg-gradient-to-br from-indigo-50 to-purple-50 py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -18,10 +18,10 @@ export const DualRole: React.FC = () => {
           className="text-center mb-12"
         >
           <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-            One Account. Two Ways.
+            Built for students and tutors
           </h2>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Learn today. Teach tomorrow. Switch anytime.
+            Q-over-o supports learning and tutoring workflows without requiring separate accounts or duplicated profile management.
           </p>
         </motion.div>
 
@@ -36,7 +36,7 @@ export const DualRole: React.FC = () => {
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              Get Help (Tutee)
+              Student path
             </button>
             <button
               onClick={() => setActiveTab('teach')}
@@ -46,7 +46,7 @@ export const DualRole: React.FC = () => {
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              Give Help (Tutor)
+              Tutor path
             </button>
           </div>
         </div>
@@ -60,7 +60,7 @@ export const DualRole: React.FC = () => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
-              className="bg-white rounded-3xl shadow-xl overflow-hidden"
+              className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm"
             >
               {activeTab === 'learn' ? (
                 <div className="grid md:grid-cols-2">
@@ -69,26 +69,30 @@ export const DualRole: React.FC = () => {
                       <BookOpen className="w-7 h-7 text-indigo-600" />
                     </div>
                     <h3 className="text-2xl font-bold text-gray-900 mb-4">
-                      Struggling With Class?
+                      Learn with more structure
                     </h3>
                     <ul className="space-y-3 mb-8">
                       {[
-                        "Find tutors in your course",
-                        "Book instant sessions",
-                        "Pay with M-Pesa",
-                        "Learn at your pace"
+                        "Discover tutors by subject",
+                        "Book sessions through the platform",
+                        "Track session history and reviews",
+                        "Understand token spending from wallet records"
                       ].map((item, i) => (
                         <li key={i} className="flex items-center gap-3 text-gray-600">
-                          <span className="w-5 h-5 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-xs">✓</span>
+                          <CheckCircle2 className="h-5 w-5 shrink-0 text-green-500" />
                           {item}
                         </li>
                       ))}
                     </ul>
                   </div>
-                  <div className="bg-indigo-600 p-8 sm:p-12 flex items-center justify-center">
-                    <div className="text-white text-center">
-                      <div className="text-5xl font-bold mb-2">500+</div>
-                      <div className="text-indigo-200">Tutors Available</div>
+                  <div className="bg-indigo-600 p-8 sm:p-12">
+                    <div className="rounded-2xl border border-white/15 bg-white/10 p-6 text-white">
+                      <p className="text-sm font-semibold uppercase tracking-wider text-indigo-100">Student workspace</p>
+                      <div className="mt-6 space-y-3">
+                        {['Tutor search', 'Upcoming sessions', 'Learning history', 'Wallet activity'].map((item) => (
+                          <div key={item} className="rounded-xl bg-white/10 px-4 py-3 text-sm font-medium">{item}</div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -99,26 +103,30 @@ export const DualRole: React.FC = () => {
                       <GraduationCap className="w-7 h-7 text-purple-600" />
                     </div>
                     <h3 className="text-2xl font-bold text-gray-900 mb-4">
-                      Good at Something?
+                      Grow a tutoring record
                     </h3>
                     <ul className="space-y-3 mb-8">
                       {[
-                        "Set your own price",
-                        "Teach when free",
-                        "Earn real money",
-                        "Build your resume"
+                        "Manage availability and sessions",
+                        "Track earnings and payout status",
+                        "Build ratings through completed sessions",
+                        "Follow qualification progress honestly"
                       ].map((item, i) => (
                         <li key={i} className="flex items-center gap-3 text-gray-600">
-                          <span className="w-5 h-5 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-xs">✓</span>
+                          <CheckCircle2 className="h-5 w-5 shrink-0 text-green-500" />
                           {item}
                         </li>
                       ))}
                     </ul>
                   </div>
-                  <div className="bg-purple-600 p-8 sm:p-12 flex items-center justify-center">
-                    <div className="text-white text-center">
-                      <div className="text-5xl font-bold mb-2">KES 5k+</div>
-                      <div className="text-purple-200">Average Monthly Earnings</div>
+                  <div className="bg-purple-600 p-8 sm:p-12">
+                    <div className="rounded-2xl border border-white/15 bg-white/10 p-6 text-white">
+                      <p className="text-sm font-semibold uppercase tracking-wider text-purple-100">Tutor workspace</p>
+                      <div className="mt-6 space-y-3">
+                        {['Teaching sessions', 'Availability', 'Earnings', 'Qualification status'].map((item) => (
+                          <div key={item} className="rounded-xl bg-white/10 px-4 py-3 text-sm font-medium">{item}</div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -129,7 +137,7 @@ export const DualRole: React.FC = () => {
           <div className="flex justify-center mt-8">
             <div className="flex items-center gap-2 text-gray-500 text-sm">
               <ArrowRightLeft className="w-4 h-4" />
-              <span>Switch roles anytime in settings</span>
+              <span>Tutors can also use learner tools when they need academic support.</span>
             </div>
           </div>
         </div>

@@ -34,6 +34,12 @@ import { AdminWallets } from '../features/admin/pages/AdminWallets';
 import { AdminReports } from '../features/admin/pages/AdminReports';
 import { adminApi } from '../api/adminApi';
 import { JaasMeetingPage } from '../features/sessions/JaasMeetingPage';
+import { AdminReportPage } from '../modules/reports/pages/AdminReportPage';
+import { TuteeSessionReportPage } from '../modules/reports/pages/TuteeSessionReportPage';
+import { TuteeWalletReportPage } from '../modules/reports/pages/TuteeWalletReportPage';
+import { TutorEarningsReportPage } from '../modules/reports/pages/TutorEarningsReportPage';
+import { TutorPerformanceReportPage } from '../modules/reports/pages/TutorPerformanceReportPage';
+import { ReportType } from '../modules/reports/core/report.types';
 
 // ── Role-aware redirect for the dashboard index ──────────────────────────────
 // Tutors  → /dashboard/overview
@@ -66,6 +72,15 @@ const AdminDashboard: React.FC = () => (
         <Route path="reviews" element={<AdminSectionPage title="Reviews" description="Moderate review content and rating signals." loadRows={adminApi.getReviews} />} />
         <Route path="subject-requests" element={<AdminSubjectRequests />} />
         <Route path="reports" element={<AdminReports />} />
+        <Route path="reports/analytics" element={<AdminReports />} />
+        <Route path="reports/financial" element={<AdminReportPage type={ReportType.ADMIN_PLATFORM_REVENUE} />} />
+        <Route path="reports/wallet" element={<AdminReportPage type={ReportType.ADMIN_WALLET_AUDIT} />} />
+        <Route path="reports/sessions" element={<AdminReportPage type={ReportType.ADMIN_SESSION_ANALYTICS} />} />
+        <Route path="reports/users" element={<AdminReportPage type={ReportType.ADMIN_USER_ANALYTICS} />} />
+        <Route path="reports/exceptions" element={<AdminReportPage type={ReportType.ADMIN_EXCEPTION_REPORTS} />} />
+        <Route path="reports/subjects" element={<AdminReportPage type={ReportType.ADMIN_SUBJECT_ANALYTICS} />} />
+        <Route path="reports/reviews" element={<AdminReportPage type={ReportType.ADMIN_REVIEW_ANALYTICS} />} />
+        <Route path="reports/qualifications" element={<AdminReportPage type={ReportType.ADMIN_TUTOR_QUALIFICATION_PROGRESS} />} />
         <Route path="notifications" element={<AdminSectionPage title="Notifications" description="Prepare platform announcements and admin-triggered messages." />} />
         <Route path="settings" element={<AdminSectionPage title="Settings" description="Configure admin policies, roles, and operational controls." />} />
         <Route path="audit-logs" element={<AdminAuditLogs />} />
@@ -104,6 +119,8 @@ const Dashboard: React.FC = () => {
         <Route path="/sessions"     element={<TutorOnly><Sessions /></TutorOnly>} />
         <Route path="/availability" element={<TutorOnly><Availability /></TutorOnly>} />
         <Route path="/earnings"     element={<TutorOnly><Earnings /></TutorOnly>} />
+        <Route path="/reports/earnings"     element={<TutorOnly><TutorEarningsReportPage /></TutorOnly>} />
+        <Route path="/reports/performance"  element={<TutorOnly><TutorPerformanceReportPage /></TutorOnly>} />
 
         {/* ── Shared private profile/settings page (all authenticated roles) ── */}
         {/* Profile is NOT TutorOnly — tutees also have a settings page here   */}
@@ -114,11 +131,15 @@ const Dashboard: React.FC = () => {
         <Route path="/discover"    element={<Discover />} />
         <Route path="/my-sessions" element={<MySessions />} />
         <Route path="/history"     element={<History />} />
+        <Route path="/reports/sessions" element={<TuteeSessionReportPage />} />
+        <Route path="/reports/wallet" element={<TuteeWalletReportPage />} />
 
         {/* Tutor learner aliases — keep sidebar "Learn" links working */}
         <Route path="/learn/discover"  element={<Discover />} />
         <Route path="/learn/sessions"  element={<MySessions />} />
         <Route path="/learn/history"   element={<History />} />
+        <Route path="/learn/reports/sessions" element={<TuteeSessionReportPage />} />
+        <Route path="/learn/reports/wallet" element={<TuteeWalletReportPage />} />
 
         {/* Catch-all inside dashboard — role-aware index */}
         <Route path="*" element={<DashboardIndex />} />
@@ -163,6 +184,9 @@ const App: React.FC = () => {
               </ProtectedRoute>
             }
           />
+
+          <Route path="/tutee/discover" element={<Navigate to="/dashboard/discover" replace />} />
+          <Route path="/tutor/overview" element={<Navigate to="/dashboard/overview" replace />} />
 
           {/* Legacy /profile redirect → /dashboard/profile */}
           <Route path="/profile" element={<Navigate to="/dashboard/profile" replace />} />

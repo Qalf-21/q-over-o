@@ -28,6 +28,7 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 const userRoutes      = require('./routes/userRoutes');
 const adminRoutes     = require('./routes/adminRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const reportRoutes    = require('./routes/reportRoutes');
 const { expireOverdueSessions } = require('./controllers/sessionController');
 
 const app  = express();
@@ -72,6 +73,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/users',     userRoutes);
 app.use('/api/admin',     adminRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/reports',   reportRoutes);
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));

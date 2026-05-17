@@ -71,7 +71,7 @@ export const RegisterForm: React.FC = () => {
   return (
     <AuthLayout 
       title="Create your account"
-      subtitle="Join Q-over-o and start learning"
+      subtitle="Use one account to learn, book sessions, and build a tutor profile when ready."
       showBackButton={true}
       backTo="/"
     >
@@ -83,7 +83,7 @@ export const RegisterForm: React.FC = () => {
           label="First Name"
           value={formData.first_name}
           onChange={handleChange}
-          placeholder="John"
+          placeholder="First name"
           icon={User}
           error={errors.first_name}
           onBlur={() => validateField('first_name')}
@@ -99,7 +99,7 @@ export const RegisterForm: React.FC = () => {
           label="Last Name"
           value={formData.last_name}
           onChange={handleChange}
-          placeholder="Doe"
+          placeholder="Last name"
           icon={User}
           error={errors.last_name}
           onBlur={() => validateField('last_name')}
@@ -112,10 +112,10 @@ export const RegisterForm: React.FC = () => {
           id="email"
           name="email"
           type="email"
-          label="University Email"
+          label="Email"
           value={formData.email}
           onChange={handleChange}
-          placeholder="john@university.ac.ke"
+          placeholder="you@example.com"
           icon={Mail}
           error={errors.email}
           onBlur={() => validateField('email')}
@@ -159,8 +159,7 @@ export const RegisterForm: React.FC = () => {
         <div className="flex items-start gap-3 py-2">
           <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-gray-500">
-            By signing up, you agree to our Terms of Service and Privacy Policy. 
-            Your data is secure and never shared.
+            Create an account to access role-aware dashboards, session workflows, wallet activity, and tutor onboarding tools.
           </p>
         </div>
 
@@ -170,7 +169,7 @@ export const RegisterForm: React.FC = () => {
           disabled={isLoading}
           icon={<ArrowRight className="w-5 h-5" />}
         >
-          Create Account
+          Create account
         </AuthButton>
       </form>
 

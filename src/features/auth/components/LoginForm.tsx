@@ -58,9 +58,9 @@ export const LoginForm: React.FC = () => {
   };
 
   return (
-    <AuthLayout
+      <AuthLayout
       title="Welcome back"
-      subtitle="Sign in to your Q-over-o account"
+      subtitle="Access your sessions, wallet, reviews, and role-based dashboard."
       showBackButton
       backTo="/"
     >
@@ -72,7 +72,7 @@ export const LoginForm: React.FC = () => {
           label="Email Address"
           value={formData.email}
           onChange={handleChange}
-          placeholder="you@university.ac.ke"
+          placeholder="you@example.com"
           icon={Mail}
           error={errors.email}
           onBlur={() => validateField('email')}
@@ -101,7 +101,7 @@ export const LoginForm: React.FC = () => {
           <div className="text-right">
             <Link
               to="/forgot-password"
-              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
+            className="text-sm font-semibold text-indigo-600 transition-colors hover:text-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
               Forgot password?
             </Link>
@@ -114,7 +114,7 @@ export const LoginForm: React.FC = () => {
           disabled={isLoading}
           icon={<ArrowRight className="w-5 h-5" />}
         >
-          Sign In
+          Sign in
         </AuthButton>
       </form>
 
@@ -125,7 +125,7 @@ export const LoginForm: React.FC = () => {
             to="/register"
             className="font-semibold text-indigo-600 hover:text-indigo-700 transition-colors"
           >
-            Create one free
+            Create an account
           </Link>
         </p>
       </div>

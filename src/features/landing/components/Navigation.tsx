@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, GraduationCap } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Menu, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { Logo } from '../../../shared/components/Logo';
 
 export const Navigation: React.FC = () => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -16,9 +17,10 @@ export const Navigation: React.FC = () => {
   }, []);
 
   const navLinks = [
-    { name: 'How It Works', href: '#how-it-works' },
-    { name: 'Features', href: '#features' },
-    { name: 'For Tutors', href: '#tutors' },
+    { name: 'Platform', href: '#features' },
+    { name: 'How it works', href: '#how-it-works' },
+    { name: 'For tutors', href: '#tutors' },
+    { name: 'Trust', href: '#trust' },
   ];
 
   return (
@@ -31,16 +33,8 @@ export const Navigation: React.FC = () => {
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16 lg:h-20">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 group">
-            <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-2 rounded-xl group-hover:scale-110 transition-transform">
-              <GraduationCap className="w-6 h-6 text-white" />
-            </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-              Q-over-o
-            </span>
-          </Link>
+        <div className="flex h-16 items-center justify-between lg:h-20">
+          <Logo size="sm" />
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-8">
@@ -48,7 +42,7 @@ export const Navigation: React.FC = () => {
               <a
                 key={link.name}
                 href={link.href}
-                className="text-gray-600 hover:text-indigo-600 font-medium transition-colors"
+                className="text-sm font-semibold text-gray-600 transition-colors hover:text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
               >
                 {link.name}
               </a>
@@ -59,13 +53,13 @@ export const Navigation: React.FC = () => {
           <div className="hidden md:flex items-center gap-4">
             <Link
               to="/login"
-              className="text-gray-700 hover:text-indigo-600 font-medium px-4 py-2 transition-colors"
+              className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
               Log In
             </Link>
             <Link
               to="/register"
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-2.5 rounded-full font-medium hover:shadow-lg hover:scale-105 transition-all"
+              className="rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
             >
               Sign Up
             </Link>
@@ -73,8 +67,10 @@ export const Navigation: React.FC = () => {
 
           {/* Mobile Menu Button */}
           <button
-            className="md:hidden p-2 text-gray-700"
+            className="rounded-lg p-2 text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            aria-label={isMobileMenuOpen ? 'Close navigation' : 'Open navigation'}
+            aria-expanded={isMobileMenuOpen}
           >
             {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -88,14 +84,14 @@ export const Navigation: React.FC = () => {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden bg-white border-t"
+            className="border-t bg-white md:hidden"
           >
             <div className="px-4 py-4 space-y-3">
               {navLinks.map((link) => (
                 <a
                   key={link.name}
                   href={link.href}
-                  className="block py-2 text-gray-700 font-medium"
+                  className="block rounded-lg py-2 text-sm font-semibold text-gray-700 hover:text-indigo-600"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   {link.name}
@@ -104,17 +100,17 @@ export const Navigation: React.FC = () => {
               <div className="pt-4 space-y-2 border-t">
                 <Link
                   to="/login"
-                  className="block w-full text-center py-3 text-gray-700 font-medium border rounded-xl"
+                  className="block w-full rounded-xl border py-3 text-center text-sm font-semibold text-gray-700"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   Log In
                 </Link>
                 <Link
                   to="/register"
-                  className="block w-full text-center py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium rounded-xl"
+                  className="block w-full rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 py-3 text-center text-sm font-semibold text-white"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
-                  Sign Up Free
+                  Create account
                 </Link>
               </div>
             </div>

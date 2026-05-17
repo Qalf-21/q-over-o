@@ -1,73 +1,39 @@
 import React from 'react';
-import { GraduationCap, Mail, Phone, MapPin } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Logo } from '../../../shared/components/Logo';
 
 export const Footer: React.FC = () => {
-  const links = {
-    Product: ['How It Works', 'Features', 'Pricing', 'For Tutors'],
-    Company: ['About Us', 'Contact', 'Careers', 'Blog'],
-    Legal: ['Privacy Policy', 'Terms of Service', 'Cookie Policy']
-  };
+  const links = [
+    { label: 'Platform', href: '#features' },
+    { label: 'How it works', href: '#how-it-works' },
+    { label: 'For tutors', href: '#tutors' },
+    { label: 'Trust', href: '#trust' },
+  ];
 
   return (
-    <footer className="bg-gray-50 border-t">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
-          {/* Brand */}
-          <div className="col-span-2 md:col-span-1">
-            <Link to="/" className="flex items-center gap-2 mb-4">
-              <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-1.5 rounded-lg">
-                <GraduationCap className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-lg font-bold text-gray-900">Q-over-o</span>
-            </Link>
-            <p className="text-sm text-gray-600 mb-4">
-              Peer-to-peer tutoring for Kenyan universities. Learn. Teach. Earn.
+    <footer className="border-t bg-gray-50">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
+          <div className="max-w-md">
+            <Logo size="sm" />
+            <p className="mt-4 text-sm leading-6 text-gray-600">
+              Q-over-o is a tutoring platform for discovering tutors, booking sessions, managing wallet activity, and supporting tutor qualification progress.
             </p>
-            <div className="space-y-2 text-sm text-gray-600">
-              <div className="flex items-center gap-2">
-                <Mail className="w-4 h-4" />
-                <span>hello@qovero.com</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Phone className="w-4 h-4" />
-                <span>+254 700 000 000</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4" />
-                <span>Nairobi, Kenya</span>
-              </div>
-            </div>
           </div>
 
-          {/* Links */}
-          {Object.entries(links).map(([category, items]) => (
-            <div key={category}>
-              <h4 className="font-bold text-gray-900 mb-4">{category}</h4>
-              <ul className="space-y-2">
-                {items.map((item) => (
-                  <li key={item}>
-                    <a href="#" className="text-sm text-gray-600 hover:text-indigo-600 transition-colors">
-                      {item}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          <nav aria-label="Footer navigation" className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:justify-end">
+            {links.map((item) => (
+              <a key={item.href} href={item.href} className="text-sm font-semibold text-gray-600 transition-colors hover:text-indigo-600">
+                {item.label}
+              </a>
+            ))}
+          </nav>
         </div>
 
-        <div className="border-t pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="mt-8 flex flex-col items-start justify-between gap-3 border-t pt-6 md:flex-row md:items-center">
           <p className="text-sm text-gray-500">
             © 2026 Q-over-o. All rights reserved.
           </p>
-          <div className="flex gap-6">
-            {['Twitter', 'Instagram', 'LinkedIn'].map((social) => (
-              <a key={social} href="#" className="text-sm text-gray-500 hover:text-indigo-600 transition-colors">
-                {social}
-              </a>
-            ))}
-          </div>
+          <p className="text-sm text-gray-500">Built for transparent tutoring workflows.</p>
         </div>
       </div>
     </footer>

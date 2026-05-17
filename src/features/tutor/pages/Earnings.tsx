@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, ArrowUpRight, ArrowDownRight, History, CreditCard, AlertCircle, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Wallet, ArrowUpRight, ArrowDownRight, History, CreditCard, AlertCircle, Loader2, BarChart3 } from 'lucide-react';
 import { TokenDisplay } from '../../dashboard/components/TokenDisplay';
 import type { Transaction } from '../tutor';
 import { walletApi } from '../../../api/walletApi';
@@ -53,6 +54,13 @@ export const Earnings: React.FC = () => {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Earnings</h1>
         <p className="text-gray-600 mt-1">Track your income and withdraw to M-Pesa</p>
+        <Link
+          to="/dashboard/reports/earnings"
+          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
+        >
+          <BarChart3 className="h-4 w-4" />
+          Earnings Reports
+        </Link>
       </div>
 
       {/* Balance Cards */}

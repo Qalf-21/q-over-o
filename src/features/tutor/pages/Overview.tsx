@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../../shared/hooks/useAuth';
 import { StatCard } from '../../dashboard/components/StatCard';
 import { SessionCard } from '../../dashboard/components/SessionCard';
 import { TokenDisplay } from '../../dashboard/components/TokenDisplay';
-import { Calendar, Clock, Loader2, Star, Users, TrendingUp, DollarSign, Lock } from 'lucide-react';
+import { Calendar, Clock, Loader2, Star, Users, TrendingUp, DollarSign, Lock, BarChart3 } from 'lucide-react';
 import type { Session } from '../tutor';
 import type { TutorQualification } from '../../../types/tutor';
 import { sessionApi } from '../../../api/sessionApi';
@@ -113,6 +114,13 @@ export const Overview: React.FC = () => {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Welcome back, {user?.firstName || 'Tutor'}!</h1>
         <p className="text-gray-600 mt-1">Here's what's happening with your tutoring</p>
+        <Link
+          to="/dashboard/reports/performance"
+          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
+        >
+          <BarChart3 className="h-4 w-4" />
+          Performance Reports
+        </Link>
       </div>
 
       {error && (
