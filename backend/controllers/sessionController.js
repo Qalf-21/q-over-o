@@ -13,29 +13,24 @@
 const supabase = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
 const { getTutorQualificationStatus } = require('../services/tutorQualificationService');
-const { generateMeetingLink } = require('../utils/meetingGenerator');
+const { signJaasJwt } = require('../services/jaasService');
+const { parseUtcDate, toUtcISOString } = require('../utils/dateTime');
 
 const displayName = (profile) => [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
 const SESSION_JOIN_EARLY_MINUTES = 5;
 const SESSION_JOIN_LATE_MINUTES = 10;
+const SESSION_EXPIRY_GRACE_MINUTES = 10;
+const SESSION_BOOKING_LEAD_MINUTES = 10;
+const MIN_SESSION_MINUTES = 30;
+const SESSION_DURATION_INCREMENT_MINUTES = 30;
+const MIN_SESSION_MS = MIN_SESSION_MINUTES * 60 * 1000;
+const SESSION_DURATION_INCREMENT_MS = SESSION_DURATION_INCREMENT_MINUTES * 60 * 1000;
 const TUTOR_EARNINGS_SHARE = 0.6;
 
-const ceilToNextHour = (date) => {
-  const rounded = new Date(date);
-  if (
-    rounded.getMinutes() === 0 &&
-    rounded.getSeconds() === 0 &&
-    rounded.getMilliseconds() === 0
-  ) {
-    return rounded;
-  }
-  rounded.setHours(rounded.getHours() + 1, 0, 0, 0);
-  return rounded;
-};
-
 const getCurrentBookableStart = (slotStart, now = new Date()) => {
-  const start = new Date(slotStart);
-  return start <= now ? ceilToNextHour(now) : start;
+  const start = parseUtcDate(slotStart);
+  const earliestStart = new Date(now.getTime() + SESSION_BOOKING_LEAD_MINUTES * 60 * 1000);
+  return start < earliestStart ? earliestStart : start;
 };
 
 // ── Slot trimming helper ───────────────────────────────────────────────────────
@@ -53,8 +48,8 @@ const trimAvailabilitySlot = async (tutorId, slotId, sessionStart, sessionEnd) =
 
   if (fetchErr || !slot) return; // slot not found or already gone — skip
 
-  const slotStart = getCurrentBookableStart(slot.start_time).toISOString();
-  const slotEnd   = slot.end_time;
+  const slotStart = toUtcISOString(getCurrentBookableStart(slot.start_time));
+  const slotEnd   = toUtcISOString(slot.end_time);
 
   const sessionStartsAtSlotStart = sessionStart <= slotStart;
   const sessionEndsAtSlotEnd     = sessionEnd   >= slotEnd;
@@ -134,7 +129,7 @@ const createFreeSession = async ({ tuteeId, tutorId, subjectId, startTime, endTi
     throw new AppError(`Free session booking failed: ${error?.message || 'unknown error'}`, 500, 'FREE_BOOKING_FAILED');
   }
 
-  const meetingLink = generateMeetingLink(session.id);
+  const meetingLink = `/session/${session.id}/join`;
   const meetingUpdate = await supabase
     .from('sessions')
     .update({ meeting_url: meetingLink })
@@ -147,6 +142,34 @@ const createFreeSession = async ({ tuteeId, tutorId, subjectId, startTime, endTi
   }
 
   return session.id;
+};
+
+const updateSessionTopic = async (sessionId, topic) => {
+  const normalizedTopic = typeof topic === 'string' ? topic.trim() : '';
+  if (!normalizedTopic) return;
+
+  const payloads = [
+    { topic: normalizedTopic, notes: normalizedTopic },
+    { topic: normalizedTopic },
+    { notes: normalizedTopic },
+  ];
+
+  let lastError = null;
+  for (const payload of payloads) {
+    const { error } = await supabase
+      .from('sessions')
+      .update(payload)
+      .eq('id', sessionId);
+
+    if (!error) return;
+    lastError = error;
+  }
+
+  throw new AppError(
+    `Failed to save session topic: ${lastError?.message || 'unknown error'}`,
+    500,
+    'SESSION_TOPIC_SAVE_FAILED',
+  );
 };
 
 const updateSessionStatus = async (sessionId, status) => {
@@ -174,16 +197,17 @@ const getSessionForActor = async (sessionId, actorId) => {
 };
 
 const withinJoinWindow = (session, now = new Date()) => {
-  const start = new Date(session.start_time);
+  const start = parseUtcDate(session.start_time);
+  const end = parseUtcDate(session.end_time);
   const opensAt = new Date(start.getTime() - SESSION_JOIN_EARLY_MINUTES * 60 * 1000);
-  const closesAt = new Date(start.getTime() + SESSION_JOIN_LATE_MINUTES * 60 * 1000);
+  const closesAt = new Date(end.getTime() + SESSION_JOIN_LATE_MINUTES * 60 * 1000);
   return now >= opensAt && now <= closesAt;
 };
 
 const getSessionMeetingLink = (session, now = new Date()) => {
   if (!['confirmed', 'in-progress'].includes(session.status)) return null;
   if (!withinJoinWindow(session, now)) return null;
-  return session.meeting_url || session.meeting_link || null;
+  return `/session/${session.id}/join`;
 };
 
 const notifyUser = async ({ userId, type, title, message, linkUrl, data = {} }) => {
@@ -209,18 +233,20 @@ const notifyUser = async ({ userId, type, title, message, linkUrl, data = {} }) 
 };
 
 const expireOverdueSessions = async (userId = null) => {
-  const cutoff = new Date(Date.now() - SESSION_JOIN_LATE_MINUTES * 60 * 1000).toISOString();
+  const cutoffMs = Date.now() - SESSION_EXPIRY_GRACE_MINUTES * 60 * 1000;
   let query = supabase
     .from('sessions')
-    .select('id, tutor_id, tutee_id, status')
-    .in('status', ['pending', 'confirmed'])
-    .lt('start_time', cutoff);
+    .select('id, tutor_id, tutee_id, status, end_time')
+    .eq('status', 'pending');
 
   if (userId) {
     query = query.or(`tutee_id.eq.${userId},tutor_id.eq.${userId}`);
   }
 
-  const { data: expiredSessions } = await query;
+  const { data: sessions } = await query;
+  const expiredSessions = (sessions || []).filter((session) => (
+    parseUtcDate(session.end_time).getTime() < cutoffMs
+  ));
 
   if (!expiredSessions?.length) return;
 
@@ -285,6 +311,7 @@ exports.bookSession = asyncHandler(async (req, res) => {
     start_time,
     end_time,
     notes,
+    topic,
     availability_slot_id,
   } = req.body;
 
@@ -294,9 +321,11 @@ exports.bookSession = asyncHandler(async (req, res) => {
 
   const requestedSubjectId = subject_id && subject_id !== '' ? subject_id : null;
 
-  const requestedStart = new Date(start_time);
-  const requestedEnd = new Date(end_time);
+  const requestedStart = parseUtcDate(start_time);
+  const requestedEnd = parseUtcDate(end_time);
   const now = new Date();
+  const earliestStart = new Date(now.getTime() + SESSION_BOOKING_LEAD_MINUTES * 60 * 1000);
+  const durationMs = requestedEnd.getTime() - requestedStart.getTime();
 
   if (
     Number.isNaN(requestedStart.getTime()) ||
@@ -306,8 +335,16 @@ exports.bookSession = asyncHandler(async (req, res) => {
     throw new AppError('Session end time must be after start time', 400);
   }
 
-  if (requestedStart <= now) {
-    throw new AppError('Cannot book a time slot that has already started', 400);
+  if (requestedStart < earliestStart) {
+    throw new AppError('Session start time must be at least 10 minutes from now', 400, 'SESSION_TOO_SOON');
+  }
+
+  if (durationMs < MIN_SESSION_MS) {
+    throw new AppError('Minimum session duration is 30 minutes', 400, 'SESSION_TOO_SHORT');
+  }
+
+  if (durationMs % SESSION_DURATION_INCREMENT_MS !== 0) {
+    throw new AppError('Session duration must use 30-minute increments', 400, 'INVALID_SESSION_DURATION_INCREMENT');
   }
 
   // ── Self-booking guard ──────────────────────────────────────────────────────
@@ -330,7 +367,7 @@ exports.bookSession = asyncHandler(async (req, res) => {
       throw new AppError('Availability slot is no longer available', 409);
     }
 
-    const slotEnd = new Date(slot.end_time);
+    const slotEnd = parseUtcDate(slot.end_time);
     const bookableStart = getCurrentBookableStart(slot.start_time, now);
 
     if (slotEnd <= now || bookableStart >= slotEnd) {
@@ -342,23 +379,42 @@ exports.bookSession = asyncHandler(async (req, res) => {
     }
   }
 
-  const { data: overlappingSession, error: overlapError } = await supabase
+  const { data: overlappingTutorSession, error: tutorOverlapError } = await supabase
     .from('sessions')
     .select('id')
     .eq('tutor_id', tutor_id)
-    .in('status', ['pending', 'confirmed'])
-    .lt('start_time', requestedEnd.toISOString())
-    .gt('end_time', requestedStart.toISOString())
+    .in('status', ['pending', 'confirmed', 'in-progress'])
+    .lt('start_time', toUtcISOString(requestedEnd))
+    .gt('end_time', toUtcISOString(requestedStart))
     .limit(1)
     .maybeSingle();
 
-  if (overlapError) {
-    console.error('[bookSession] overlap validation failed:', JSON.stringify(overlapError));
+  if (tutorOverlapError) {
+    console.error('[bookSession] tutor overlap validation failed:', JSON.stringify(tutorOverlapError));
     throw new AppError('Failed to validate tutor availability', 500);
   }
 
-  if (overlappingSession) {
-    throw new AppError('This time slot has already been booked', 409, 'SLOT_ALREADY_BOOKED');
+  if (overlappingTutorSession) {
+    throw new AppError('This tutor already has a session during that time', 409, 'TUTOR_SESSION_OVERLAP');
+  }
+
+  const { data: overlappingTuteeSession, error: tuteeOverlapError } = await supabase
+    .from('sessions')
+    .select('id')
+    .eq('tutee_id', req.user.id)
+    .in('status', ['pending', 'confirmed', 'in-progress'])
+    .lt('start_time', toUtcISOString(requestedEnd))
+    .gt('end_time', toUtcISOString(requestedStart))
+    .limit(1)
+    .maybeSingle();
+
+  if (tuteeOverlapError) {
+    console.error('[bookSession] tutee overlap validation failed:', JSON.stringify(tuteeOverlapError));
+    throw new AppError('Failed to validate your schedule', 500);
+  }
+
+  if (overlappingTuteeSession) {
+    throw new AppError('You already have a session during that time', 409, 'TUTEE_SESSION_OVERLAP');
   }
 
   // ── Review gate ─────────────────────────────────────────────────────────────
@@ -394,8 +450,8 @@ exports.bookSession = asyncHandler(async (req, res) => {
   }
 
   const qualification = await getTutorQualificationStatus(tutor_id);
-  const normalizedStartTime = requestedStart.toISOString();
-  const normalizedEndTime = requestedEnd.toISOString();
+  const normalizedStartTime = toUtcISOString(requestedStart);
+  const normalizedEndTime = toUtcISOString(requestedEnd);
 
   const sessionId = await createFreeSession({
     tuteeId: req.user.id,
@@ -405,9 +461,7 @@ exports.bookSession = asyncHandler(async (req, res) => {
     endTime: normalizedEndTime,
   });
 
-  if (notes) {
-    await supabase.from('sessions').update({ notes }).eq('id', sessionId);
-  }
+  await updateSessionTopic(sessionId, topic ?? notes);
 
   // ── Trim the availability slot (best-effort, non-blocking) ───────────────────
   // We do this after the booking succeeds so a slot-trim failure doesn't
@@ -560,7 +614,7 @@ exports.acceptSession = asyncHandler(async (req, res) => {
     throw new AppError('Only pending sessions can be accepted', 409);
   }
 
-  if (new Date(session.start_time).getTime() + SESSION_JOIN_LATE_MINUTES * 60 * 1000 < Date.now()) {
+  if (parseUtcDate(session.end_time).getTime() + SESSION_EXPIRY_GRACE_MINUTES * 60 * 1000 < Date.now()) {
     await updateSessionStatus(id, 'cancelled');
     throw new AppError('This session has expired and was cancelled automatically', 409);
   }
@@ -604,6 +658,32 @@ exports.declineSession = asyncHandler(async (req, res) => {
   });
 
   res.json({ success: true, message: 'Session declined' });
+});
+
+// ── getSessionJoinInfo ───────────────────────────────────────────────────────
+exports.getSessionJoinInfo = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const session = await getSessionForActor(id, req.user.id);
+
+  if (!['confirmed', 'in-progress'].includes(session.status)) {
+    throw new AppError('Only accepted sessions can be joined', 409, 'SESSION_NOT_JOINABLE');
+  }
+
+  if (!withinJoinWindow(session)) {
+    throw new AppError('This session is not currently joinable', 409, 'SESSION_OUTSIDE_JOIN_WINDOW');
+  }
+
+  const isTutor = session.tutor_id === req.user.id;
+  const joinInfo = signJaasJwt({
+    sessionId: id,
+    user: req.user,
+    moderator: isTutor,
+  });
+
+  res.json({
+    success: true,
+    data: joinInfo,
+  });
 });
 
 // ── cancelSession ──────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ const {
   completeSession,
   acceptSession,
   declineSession,
+  getSessionJoinInfo,
   cancelSession,
   undoCancellation
 } = require('../controllers/sessionController');
@@ -15,6 +16,7 @@ const router = express.Router();
 router.use(authMiddleware);
 router.post('/book', bookSession);
 router.get('/', getSessions);
+router.get('/:id/join', getSessionJoinInfo);
 router.post('/:id/accept', acceptSession);
 router.post('/:id/decline', declineSession);
 router.post('/:id/complete', completeSession);

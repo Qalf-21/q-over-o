@@ -53,6 +53,7 @@ import { tutorApi } from '../../../api/tutorApi';
 import { authService } from '../../auth/authService';
 import { TutorProfileModal } from '../../../shared/components/TutorProfileModal';
 import { useToast } from '../../../shared/components/Toast';
+import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -437,22 +438,24 @@ export const Profile: React.FC = () => {
   const initial = initials(user?.firstName, user?.lastName);
 
   // ── Fetch profile ─────────────────────────────────────────────────────────
-  const fetchProfile = useCallback(async () => {
+  const fetchProfile = useCallback(async (silent = false) => {
     try {
-      setIsLoadingProfile(true);
+      if (!silent) setIsLoadingProfile(true);
       setLoadError(null);
       const res = await profileApi.getMe();
       if (res.data) setProfile(res.data ?? null);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load profile');
     } finally {
-      setIsLoadingProfile(false);
+      if (!silent) setIsLoadingProfile(false);
     }
   }, []);
 
   useEffect(() => {
     fetchProfile();
   }, [fetchProfile]);
+
+  useAutoRefresh(() => fetchProfile(true), { intervalMs: 60_000 });
 
   // ── Personal info handlers ────────────────────────────────────────────────
   const handleStartEdit = () => {
@@ -652,7 +655,7 @@ export const Profile: React.FC = () => {
         <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 flex-shrink-0" />
           {loadError}
-          <button onClick={fetchProfile} className="ml-auto text-indigo-600 hover:underline font-medium">
+          <button onClick={() => fetchProfile()} className="ml-auto text-indigo-600 hover:underline font-medium">
             Retry
           </button>
         </div>

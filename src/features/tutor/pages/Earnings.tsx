@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Wallet, ArrowUpRight, ArrowDownRight, History, CreditCard, AlertCircle, Loader2 } from 'lucide-react';
 import { TokenDisplay } from '../../dashboard/components/TokenDisplay';
 import type { Transaction } from '../tutor';
 import { walletApi } from '../../../api/walletApi';
+import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 export const Earnings: React.FC = () => {
   const [showWithdrawForm, setShowWithdrawForm] = useState(false);
@@ -12,23 +13,25 @@ export const Earnings: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const loadEarnings = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const response = await walletApi.getWallet();
-        setAvailableBalance(response.data.balance);
-        setTransactions(response.data.transactions || []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load earnings');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadEarnings();
+  const loadEarnings = useCallback(async (silent = false) => {
+    try {
+      if (!silent) setIsLoading(true);
+      setError(null);
+      const response = await walletApi.getWallet();
+      setAvailableBalance(response.data.balance);
+      setTransactions(response.data.transactions || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load earnings');
+    } finally {
+      if (!silent) setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadEarnings();
+  }, [loadEarnings]);
+
+  useAutoRefresh(() => loadEarnings(true), { intervalMs: 30_000 });
 
   const totalEarned = transactions
     .filter(transaction => transaction.type === 'credit' && transaction.status === 'completed')

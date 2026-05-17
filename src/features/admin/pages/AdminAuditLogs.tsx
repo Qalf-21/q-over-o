@@ -1,9 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { adminApi } from '../../../api/adminApi';
 import type { AdminLog } from '../types/admin';
+import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 export const AdminAuditLogs: React.FC = () => {
   const [logs, setLogs] = useState<AdminLog[]>([]);
+
+  const loadLogs = useCallback(async () => {
+    setLogs(await adminApi.getAuditLogs());
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -11,7 +16,9 @@ export const AdminAuditLogs: React.FC = () => {
       if (!cancelled) setLogs(data);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [loadLogs]);
+
+  useAutoRefresh(loadLogs, { intervalMs: 30_000 });
 
   return (
     <div className="space-y-6">

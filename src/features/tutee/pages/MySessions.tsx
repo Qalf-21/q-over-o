@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Calendar, Clock, Filter, Loader2, Search, Video, CheckCircle2, Star, XCircle } from 'lucide-react';
 import { ReviewModal } from '../components/ReviewModal';
 import type { TuteeSession, ReviewSubmission } from '../../../types/tutor';
 import { reviewApi } from '../../../api/reviewApi';
 import { sessionApi } from '../../../api/sessionApi';
+import { parseUtcDate } from '../../../utils/dateTime';
+import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 export const MySessions: React.FC = () => {
   const [activeFilter, setActiveFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'declined'>('all');
@@ -14,22 +16,24 @@ export const MySessions: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [reviewSession, setReviewSession] = useState<TuteeSession | null>(null);
 
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async (silent = false) => {
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       setError(null);
       const response = await sessionApi.getTuteeSessions();
       setSessions(response.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sessions');
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadSessions();
-  }, []);
+  }, [loadSessions]);
+
+  useAutoRefresh(() => loadSessions(true), { intervalMs: 15_000 });
 
   const filters: { value: typeof activeFilter; label: string }[] = [
     { value: 'all', label: 'All Sessions' },
@@ -59,13 +63,16 @@ export const MySessions: React.FC = () => {
   };
 
   const canJoinSession = (session: TuteeSession) => {
-    const scheduledAt = new Date(session.scheduledAt);
+    const scheduledAt = parseUtcDate(session.scheduledAt);
+    const scheduledEnd = session.scheduledEnd
+      ? parseUtcDate(session.scheduledEnd)
+      : new Date(scheduledAt.getTime() + session.duration * 60 * 1000);
     const now = new Date();
     return (
       ['confirmed', 'in-progress'].includes(session.status) &&
       Boolean(session.meetingLink) &&
       now >= new Date(scheduledAt.getTime() - 5 * 60 * 1000) &&
-      now <= new Date(scheduledAt.getTime() + 10 * 60 * 1000)
+      now <= new Date(scheduledEnd.getTime() + 10 * 60 * 1000)
     );
   };
 
@@ -183,13 +190,13 @@ export const MySessions: React.FC = () => {
                       <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-4 h-4" />
-                          {new Date(session.scheduledAt).toLocaleDateString()}
+                          {parseUtcDate(session.scheduledAt).toLocaleDateString()}
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-4 h-4" />
                           {session.scheduledEnd
-                            ? `${new Date(session.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(session.scheduledEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                            : new Date(session.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            ? `${parseUtcDate(session.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${parseUtcDate(session.scheduledEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                            : parseUtcDate(session.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                     </div>

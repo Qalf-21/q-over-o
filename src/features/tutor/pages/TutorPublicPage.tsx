@@ -25,6 +25,7 @@ import {
 import { tutorApi } from '../../../api/tutorApi';
 import { reviewApi } from '../../../api/reviewApi';
 import { useAuth } from '../../../shared/hooks/useAuth';
+import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,10 +197,10 @@ export const TutorPublicPage: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showBookingPrompt, setShowBookingPrompt] = useState(false);
 
-  const loadTutor = useCallback(async () => {
+  const loadTutor = useCallback(async (silent = false) => {
     if (!id) return;
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       setLoadError(null);
       const [tutorRes, reviewRes] = await Promise.all([
         tutorApi.getTutor(id),
@@ -210,13 +211,15 @@ export const TutorPublicPage: React.FC = () => {
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load tutor profile');
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, [id]);
 
   useEffect(() => {
     loadTutor();
   }, [loadTutor]);
+
+  useAutoRefresh(() => loadTutor(true), { enabled: Boolean(id), intervalMs: 30_000 });
 
   const handleBook = () => {
     if (!isAuthenticated) {

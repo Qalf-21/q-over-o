@@ -3,6 +3,7 @@ import { Check, Loader2, X } from 'lucide-react';
 import { adminApi } from '../../../api/adminApi';
 import { AdminDataTable } from '../components/AdminDataTable';
 import type { AdminTableRow } from '../types/admin';
+import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 export const AdminSubjectRequests: React.FC = () => {
   const [rows, setRows] = useState<AdminTableRow[]>([]);
@@ -10,21 +11,23 @@ export const AdminSubjectRequests: React.FC = () => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const loadRows = useCallback(async () => {
-    setIsLoading(true);
+  const loadRows = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
     setError(null);
     try {
       setRows(await adminApi.getSubjectRequests());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load subject requests');
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
     loadRows();
   }, [loadRows]);
+
+  useAutoRefresh(() => loadRows(true), { intervalMs: 30_000 });
 
   const handleApprove = async (id: string) => {
     setActiveId(id);

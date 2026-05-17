@@ -7,6 +7,7 @@
 
 import { apiRequest } from './client';
 import type { Session, TuteeSession } from '../types/tutor';
+import { parseUtcDate } from '../utils/dateTime';
 
 type RawSession = Record<string, unknown>;
 
@@ -15,13 +16,23 @@ export type BookSessionPayload = {
   subject_id?: string;  // optional — backend falls back to tutor's first subject
   start_time: string;
   end_time: string;
+  topic?: string;
   notes?: string;
   availability_slot_id?: string;
 };
 
+export type SessionJoinInfo = {
+  appId: string;
+  domain: string;
+  room: string;
+  roomName: string;
+  jwt: string;
+  moderator: boolean;
+};
+
 const minutesBetween = (start?: string, end?: string) => {
   if (!start || !end) return 0;
-  return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000));
+  return Math.max(0, Math.round((parseUtcDate(end).getTime() - parseUtcDate(start).getTime()) / 60000));
 };
 
 const asString = (value: unknown): string | undefined =>
@@ -131,6 +142,10 @@ export const sessionApi = {
 
   async acceptSession(id: string) {
     return apiRequest<never>(`/sessions/${id}/accept`, { method: 'POST' });
+  },
+
+  async getJoinInfo(id: string) {
+    return apiRequest<SessionJoinInfo>(`/sessions/${id}/join`, { method: 'GET' });
   },
 
   async declineSession(id: string) {

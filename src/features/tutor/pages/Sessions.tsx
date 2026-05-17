@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SessionCard } from '../../dashboard/components/SessionCard';
 import { Calendar, Filter, Loader2, Search, Video } from 'lucide-react';
 import type { Session } from '../tutor';
 import { sessionApi } from '../../../api/sessionApi';
+import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 type SessionFilter = 'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'declined';
 
@@ -14,22 +15,24 @@ export const Sessions: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async (silent = false) => {
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       setError(null);
       const response = await sessionApi.getTutorSessions();
       setSessions(response.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sessions');
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadSessions();
-  }, []);
+  }, [loadSessions]);
+
+  useAutoRefresh(() => loadSessions(true), { intervalMs: 15_000 });
 
   const filters: { value: SessionFilter; label: string }[] = [
     { value: 'all', label: 'All Sessions' },

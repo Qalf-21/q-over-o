@@ -3,9 +3,8 @@
 // Changes:
 //  • Loads tutor's real availability slots via tutorApi.getAvailability()
 //  • Shows slots grouped by date for the tutee to pick from
-//  • Duration minimum is 60 min; options are 60/90/120/180 min
-//  • When selected slot > duration, a start-time picker appears (hourly offsets
-//    within the slot so the session fits entirely inside it)
+//  • Duration minimum is 30 min and increases in 30-minute increments
+//  • Start time can be any minute inside the slot if it is at least 10 minutes away
 //  • On confirm, sends the precise start/end ISO times to the backend
 //  • After booking, the used portion of the slot is removed/trimmed on the backend
 //    via the new PATCH /tutors/availability/:slotId/trim endpoint
@@ -21,6 +20,7 @@ import {
 import type { TutorSearchResult, BookingRequest } from '../../../types/tutor';
 import { sessionApi } from '../../../api/sessionApi';
 import { tutorApi } from '../../../api/tutorApi';
+import { localDateKey, parseUtcDate } from '../../../utils/dateTime';
 
 interface AvailabilitySlot {
   id: string;
@@ -37,12 +37,14 @@ interface BookingModalProps {
   onConfirm: (booking: BookingRequest) => void | Promise<void>;
 }
 
-const DURATIONS = [60, 90, 120, 180];
+const MIN_BOOKING_LEAD_MINUTES = 10;
+const MIN_SESSION_MINUTES = 30;
+const SESSION_DURATION_INCREMENT_MINUTES = 30;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmt12 = (iso: string) => {
-  const d = new Date(iso);
+  const d = parseUtcDate(iso);
   const h = d.getHours();
   const m = d.getMinutes();
   const suffix = h >= 12 ? 'PM' : 'AM';
@@ -51,54 +53,58 @@ const fmt12 = (iso: string) => {
 };
 
 const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, {
+  parseUtcDate(iso).toLocaleDateString(undefined, {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
   });
 
 const minutesBetween = (a: string, b: string) =>
-  Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000);
+  Math.round((parseUtcDate(b).getTime() - parseUtcDate(a).getTime()) / 60000);
 
 const addMinutes = (iso: string, mins: number) =>
-  new Date(new Date(iso).getTime() + mins * 60000).toISOString();
+  new Date(parseUtcDate(iso).getTime() + mins * 60000).toISOString();
 
-const ceilToNextHour = (date: Date) => {
+const ceilToNextMinute = (date: Date) => {
   const rounded = new Date(date);
-  if (
-    rounded.getMinutes() === 0 &&
-    rounded.getSeconds() === 0 &&
-    rounded.getMilliseconds() === 0
-  ) {
-    return rounded;
-  }
-  rounded.setHours(rounded.getHours() + 1, 0, 0, 0);
+  if (rounded.getSeconds() === 0 && rounded.getMilliseconds() === 0) return rounded;
+  rounded.setMinutes(rounded.getMinutes() + 1, 0, 0);
   return rounded;
 };
 
 const currentBookableStart = (startIso: string, now: Date) => {
-  const start = new Date(startIso);
-  return start <= now ? ceilToNextHour(now) : start;
+  const start = parseUtcDate(startIso);
+  const earliestStart = ceilToNextMinute(new Date(now.getTime() + MIN_BOOKING_LEAD_MINUTES * 60000));
+  return start < earliestStart ? earliestStart : start;
+};
+
+const toTimeValue = (iso: string) => parseUtcDate(iso).toTimeString().slice(0, 5);
+
+const localDateTimeToIso = (dateKey: string, time: string) => {
+  const [hour, minute] = time.split(':').map(Number);
+  const date = new Date(`${dateKey}T00:00:00`);
+  date.setHours(hour, minute, 0, 0);
+  return date.toISOString();
+};
+
+const durationOptionsFor = (slot: AvailabilitySlot | null, startTime: string) => {
+  if (!slot || !startTime) return [];
+  const start = parseUtcDate(localDateTimeToIso(localDateKey(slot.start_time), startTime));
+  const end = parseUtcDate(slot.end_time);
+  const maxDuration = Math.floor((end.getTime() - start.getTime()) / 60000 / SESSION_DURATION_INCREMENT_MINUTES) * SESSION_DURATION_INCREMENT_MINUTES;
+  if (maxDuration < MIN_SESSION_MINUTES) return [];
+  return Array.from(
+    { length: Math.floor(maxDuration / SESSION_DURATION_INCREMENT_MINUTES) },
+    (_, index) => (index + 1) * SESSION_DURATION_INCREMENT_MINUTES,
+  );
 };
 
 /** Group slots by calendar date (YYYY-MM-DD) */
 const groupByDate = (slots: AvailabilitySlot[]): Record<string, AvailabilitySlot[]> => {
   return slots.reduce<Record<string, AvailabilitySlot[]>>((acc, s) => {
-    const key = s.start_time.slice(0, 10);
+    const key = localDateKey(s.start_time);
     if (!acc[key]) acc[key] = [];
     acc[key].push(s);
     return acc;
   }, {});
-};
-
-/** Build hourly start-time options within a slot for the chosen duration */
-const buildStartOptions = (slot: AvailabilitySlot, durationMins: number): string[] => {
-  const options: string[] = [];
-  let cursor = new Date(slot.start_time).getTime();
-  const latest = new Date(slot.end_time).getTime() - durationMins * 60000;
-  while (cursor <= latest) {
-    options.push(new Date(cursor).toISOString());
-    cursor += 60 * 60000; // step 1 hour
-  }
-  return options;
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -117,7 +123,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [slotsError, setSlotsError] = useState<string | null>(null);
 
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
-  const [duration, setDuration] = useState<number>(60);
+  const [duration, setDuration] = useState<number>(MIN_SESSION_MINUTES);
   const [sessionStart, setSessionStart] = useState<string>('');
   const [topic, setTopic] = useState('');
 
@@ -142,7 +148,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         const raw: any[] = (res as any)?.data?.slots ?? (res as any)?.data ?? [];
         const now = new Date();
         const normalized: AvailabilitySlot[] = raw
-          .filter(s => new Date(s.end_time ?? s.endTime) > now)
+          .filter(s => parseUtcDate(s.end_time ?? s.endTime) > now)
           .map(s => {
             const start = currentBookableStart(s.start_time ?? s.startTime, now).toISOString();
             const end = s.end_time ?? s.endTime;
@@ -153,7 +159,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               slotMinutes: minutesBetween(start, end),
             };
           })
-          .filter(s => s.slotMinutes > 0)
+          .filter(s => s.slotMinutes >= MIN_SESSION_MINUTES)
           .sort((a, b) => a.start_time.localeCompare(b.start_time));
         setSlots(normalized);
       })
@@ -173,12 +179,22 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
   }, [tutor?.id]);
 
-  // Reset sessionStart when slot or duration changes
+  // Reset start and duration when the selected slot changes.
   useEffect(() => {
     if (!selectedSlot) { setSessionStart(''); return; }
-    const options = buildStartOptions(selectedSlot, duration);
-    setSessionStart(options.length === 1 ? options[0] : '');
-  }, [selectedSlot?.id, duration]);
+    const nextStart = toTimeValue(selectedSlot.start_time);
+    const options = durationOptionsFor(selectedSlot, nextStart);
+    setSessionStart(nextStart);
+    setDuration(options[0] ?? MIN_SESSION_MINUTES);
+  }, [selectedSlot?.id]);
+
+  useEffect(() => {
+    if (!selectedSlot || !sessionStart) return;
+    const options = durationOptionsFor(selectedSlot, sessionStart);
+    if (!options.includes(duration)) {
+      setDuration(options[0] ?? MIN_SESSION_MINUTES);
+    }
+  }, [selectedSlot, sessionStart, duration]);
 
   // ── Guards (after ALL hooks) ────────────────────────────────────────────────
   if (!tutor) return null;
@@ -189,14 +205,27 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const totalCost = isPaymentLocked ? 0 : Math.round(tutor.hourlyRate * (duration / 60));
   const hasEnoughTokens = userTokens >= totalCost;
 
-  const startOptions = selectedSlot ? buildStartOptions(selectedSlot, duration) : [];
-  const needsStartPicker = startOptions.length > 1;
-  const effectiveStart = sessionStart || (startOptions.length === 1 ? startOptions[0] : '');
+  const durationOptions = selectedSlot ? durationOptionsFor(selectedSlot, sessionStart) : [];
+  const effectiveStart = selectedSlot && sessionStart ? localDateTimeToIso(localDateKey(selectedSlot.start_time), sessionStart) : '';
   const effectiveEnd   = effectiveStart ? addMinutes(effectiveStart, duration) : '';
+  const startIsInsideSlot = Boolean(
+    selectedSlot &&
+    effectiveStart &&
+    parseUtcDate(effectiveStart) >= parseUtcDate(selectedSlot.start_time) &&
+    parseUtcDate(effectiveStart) < parseUtcDate(selectedSlot.end_time)
+  );
+  const endIsInsideSlot = Boolean(
+    selectedSlot &&
+    effectiveEnd &&
+    parseUtcDate(effectiveEnd) <= parseUtcDate(selectedSlot.end_time)
+  );
 
   const canProceed =
     !!selectedSlot &&
     !!effectiveStart &&
+    startIsInsideSlot &&
+    endIsInsideSlot &&
+    durationOptions.includes(duration) &&
     hasEnoughTokens;
     // Note: selectedSubjectId is optional — backend falls back to first tutor subject
 
@@ -205,22 +234,22 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleSlotSelect = (slot: AvailabilitySlot) => {
-    // Only selectable if the slot can fit at least the minimum duration
-    if (slot.slotMinutes < 60) return;
-    // If current duration no longer fits, reset to 60
-    const newDuration = slot.slotMinutes >= duration ? duration : 60;
+    if (slot.slotMinutes < MIN_SESSION_MINUTES) return;
     setSelectedSlot(slot);
-    setDuration(newDuration);
     setBookingError(null);
   };
 
   const handleDurationChange = (mins: number) => {
-    if (!selectedSlot || selectedSlot.slotMinutes < mins) return;
+    if (!selectedSlot || !durationOptions.includes(mins)) return;
     setDuration(mins);
   };
 
   const handleConfirm = async () => {
     if (!effectiveStart || !effectiveEnd || !selectedSlot) return;
+    if (!canProceed) {
+      setBookingError('Choose a valid start time and duration inside the selected availability slot.');
+      return;
+    }
     setIsProcessing(true);
     setBookingError(null);
     const activeSubject = tutor.subjects?.find(s => s.id === selectedSubjectId)
@@ -231,6 +260,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         subject_id: activeSubject?.id,  // undefined when no subject — backend resolves
         start_time: effectiveStart,
         end_time:   effectiveEnd,
+        topic,
         notes:      topic,
         availability_slot_id: selectedSlot.id,
       });
@@ -302,8 +332,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <CheckCircle2 className="w-6 h-6 text-green-600" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">Booking Confirmed!</h2>
-                  <p className="text-sm text-gray-500">Your session has been scheduled</p>
+                  <h2 className="text-lg font-bold text-gray-900">Request Sent</h2>
+                  <p className="text-sm text-gray-500">Your tutor can now accept or decline it</p>
                 </div>
               </div>
             ) : (
@@ -358,14 +388,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                           </p>
                           <div className="flex flex-wrap gap-2">
                             {dateGroups[dateKey].map(slot => {
-                              const fits = slot.slotMinutes >= 60;
+                              const fits = slot.slotMinutes >= MIN_SESSION_MINUTES;
                               const isSelected = selectedSlot?.id === slot.id;
                               return (
                                 <button
                                   key={slot.id}
                                   onClick={() => handleSlotSelect(slot)}
                                   disabled={!fits}
-                                  title={!fits ? 'Slot is too short (< 60 min)' : undefined}
+                                  title={!fits ? 'Slot is too short (< 30 min)' : undefined}
                                   className={`px-3 py-2 rounded-xl text-sm font-medium transition-all border ${
                                     isSelected
                                       ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
@@ -385,55 +415,49 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   )}
                 </div>
 
-                {/* Duration — only show when a slot is selected */}
                 {selectedSlot && (
                   <div>
-                    <p className="text-sm font-semibold text-gray-700 mb-3">Duration (minimum 60 min)</p>
-                    <div className="flex gap-2 flex-wrap">
-                      {DURATIONS.map(d => {
-                        const fits = selectedSlot.slotMinutes >= d;
-                        return (
-                          <button
-                            key={d}
-                            onClick={() => handleDurationChange(d)}
-                            disabled={!fits}
-                            className={`flex-1 min-w-[60px] py-2 rounded-xl text-sm font-medium transition-all ${
-                              duration === d
-                                ? 'bg-indigo-600 text-white shadow-sm'
-                                : fits
-                                ? 'bg-gray-50 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
-                                : 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                            }`}
-                          >
-                            {d}m
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2" htmlFor="session-start-time">
+                      <Clock className="w-4 h-4 text-indigo-500" /> Start Time
+                    </label>
+                    <input
+                      id="session-start-time"
+                      type="time"
+                      step={60}
+                      min={toTimeValue(selectedSlot.start_time)}
+                      max={toTimeValue(addMinutes(selectedSlot.end_time, -MIN_SESSION_MINUTES))}
+                      value={sessionStart}
+                      onChange={e => {
+                        setSessionStart(e.target.value);
+                        setBookingError(null);
+                      }}
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm"
+                    />
+                    <p className="mt-1 text-xs text-gray-400">
+                      Earliest start is {fmt12(selectedSlot.start_time)}. Sessions must start at least 10 minutes from now.
+                    </p>
                   </div>
                 )}
 
-                {/* Start time picker — only when slot is longer than duration */}
-                {selectedSlot && needsStartPicker && (
+                {selectedSlot && (
                   <div>
-                    <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-indigo-500" /> Choose Start Time
-                      <span className="text-xs font-normal text-gray-400">
-                        (session ends {duration} min later)
-                      </span>
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {startOptions.map(opt => (
+                    <p className="text-sm font-semibold text-gray-700 mb-3">Duration (minimum 30 min)</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {durationOptions.length === 0 ? (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                          Pick an earlier start time to fit a 30-minute session.
+                        </div>
+                      ) : durationOptions.map(d => (
                         <button
-                          key={opt}
-                          onClick={() => setSessionStart(opt)}
-                          className={`px-3 py-2 rounded-xl text-sm font-medium transition-all border ${
-                            sessionStart === opt
-                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                              : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-indigo-400 hover:text-indigo-600'
+                          key={d}
+                          onClick={() => handleDurationChange(d)}
+                          className={`flex-1 min-w-[64px] py-2 rounded-xl text-sm font-medium transition-all ${
+                            duration === d
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'bg-gray-50 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
                           }`}
                         >
-                          {fmt12(opt)}
+                          {d}m
                         </button>
                       ))}
                     </div>
@@ -572,10 +596,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <CheckCircle2 className="w-10 h-10 text-green-600" />
                 </motion.div>
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-1">You're all set!</h3>
+                  <h3 className="text-xl font-bold text-gray-900 mb-1">Session request sent</h3>
                   <p className="text-gray-500 text-sm">
-                    Your session with <span className="font-medium text-gray-700">{tutor.name}</span> is
-                    confirmed for {fmtDate(effectiveStart)} at {fmt12(effectiveStart)}.
+                    Your request with <span className="font-medium text-gray-700">{tutor.name}</span> is
+                    pending for {fmtDate(effectiveStart)} at {fmt12(effectiveStart)}.
                   </p>
                 </div>
               </div>
@@ -628,5 +652,3 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     </AnimatePresence>
   );
 };
-
-

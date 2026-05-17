@@ -40,6 +40,7 @@
 
 const supabase = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
+const { parseUtcDate, toUtcISOString } = require('../utils/dateTime');
 const {
   getTutorQualificationStatus,
 } = require('../services/tutorQualificationService');
@@ -164,28 +165,22 @@ const ensureTutorProfileRow = async (userId) => {
   return verifiedProfile;
 };
 
-const ceilToNextHour = (date) => {
-  const rounded = new Date(date);
-  if (
-    rounded.getMinutes() === 0 &&
-    rounded.getSeconds() === 0 &&
-    rounded.getMilliseconds() === 0
-  ) {
-    return rounded;
-  }
-  rounded.setHours(rounded.getHours() + 1, 0, 0, 0);
-  return rounded;
-};
+const AVAILABILITY_LEAD_MINUTES = 10;
+const MIN_AVAILABILITY_HOURS = 1;
+const MAX_AVAILABILITY_HOURS = 8;
+const AVAILABILITY_INCREMENT_HOURS = 1;
+const HOUR_MS = 60 * 60 * 1000;
 
 const withCurrentBookableStart = (slot, nowDate = new Date()) => {
-  const start = new Date(slot.start_time);
-  const end = new Date(slot.end_time);
+  const start = parseUtcDate(slot.start_time);
+  const end = parseUtcDate(slot.end_time);
 
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= nowDate) {
     return null;
   }
 
-  const bookableStart = start <= nowDate ? ceilToNextHour(nowDate) : start;
+  const earliestStart = new Date(nowDate.getTime() + AVAILABILITY_LEAD_MINUTES * 60 * 1000);
+  const bookableStart = start < earliestStart ? earliestStart : start;
   if (bookableStart >= end) return null;
 
   return {
@@ -201,8 +196,7 @@ const hasCurrentBookableAvailability = async (tutorId, nowDate = new Date()) => 
     .select('id, start_time, end_time')
     .eq('tutor_id', tutorId)
     .eq('is_available', true)
-    .gt('end_time', nowDate.toISOString())
-    .limit(10);
+    .order('start_time', { ascending: true });
 
   if (error || !slots?.length) return false;
   return slots.some((slot) => withCurrentBookableStart(slot, nowDate) !== null);
@@ -400,7 +394,6 @@ exports.getTutorAvailability = asyncHandler(async (req, res) => {
     .select('id, start_time, end_time, is_available')
     .eq('tutor_id', id)
     .eq('is_available', true)
-    .gt('end_time', nowDate.toISOString())
     .order('start_time', { ascending: true });
 
   if (error) throw new AppError('Failed to fetch availability', 500);
@@ -421,7 +414,6 @@ exports.getMyAvailability = asyncHandler(async (req, res) => {
     .select('id, start_time, end_time, is_available')
     .eq('tutor_id', tutorId)
     .eq('is_available', true)
-    .gt('end_time', nowDate.toISOString())
     .order('start_time', { ascending: true });
 
   if (error) throw new AppError('Failed to fetch availability', 500);
@@ -439,26 +431,32 @@ exports.createAvailability = asyncHandler(async (req, res) => {
 
   if (!startTime || !endTime) throw new AppError('startTime and endTime are required', 400);
 
-  const start = new Date(startTime);
-  const end = new Date(endTime);
+  const start = parseUtcDate(startTime);
+  const end = parseUtcDate(endTime);
 
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
     throw new AppError('Invalid date format', 400);
   }
   if (end <= start) throw new AppError('endTime must be after startTime', 400);
-  if (start <= new Date()) throw new AppError('startTime must be in the future', 400);
+  if (start < new Date(Date.now() + AVAILABILITY_LEAD_MINUTES * 60 * 1000)) {
+    throw new AppError('Availability start time must be at least 10 minutes from now', 400, 'AVAILABILITY_TOO_SOON');
+  }
 
-  const durationHours = (end - start) / 36e5;
-  if (durationHours < 1) throw new AppError('Minimum slot duration is 1 hour', 400);
-  if (durationHours > 8) throw new AppError('Maximum slot duration is 8 hours', 400);
+  const durationMs = end.getTime() - start.getTime();
+  const durationHours = durationMs / HOUR_MS;
+  if (durationHours < MIN_AVAILABILITY_HOURS) throw new AppError('Minimum slot duration is 1 hour', 400);
+  if (durationHours > MAX_AVAILABILITY_HOURS) throw new AppError('Maximum slot duration is 8 hours', 400);
+  if (durationMs % (AVAILABILITY_INCREMENT_HOURS * HOUR_MS) !== 0) {
+    throw new AppError('Availability duration must use 1-hour increments', 400, 'INVALID_AVAILABILITY_DURATION_INCREMENT');
+  }
 
   const { data: overlaps, error: overlapError } = await supabase
     .from('availability_slots')
     .select('id')
     .eq('tutor_id', tutorId)
     .eq('is_available', true)
-    .lt('start_time', end.toISOString())
-    .gt('end_time', start.toISOString())
+    .lt('start_time', toUtcISOString(end))
+    .gt('end_time', toUtcISOString(start))
     .limit(1);
 
   if (overlapError) throw new AppError('Failed to validate availability', 500);
@@ -466,7 +464,7 @@ exports.createAvailability = asyncHandler(async (req, res) => {
 
   const { data: slot, error } = await supabase
     .from('availability_slots')
-    .insert({ tutor_id: tutorId, start_time: start.toISOString(), end_time: end.toISOString(), is_available: true })
+    .insert({ tutor_id: tutorId, start_time: toUtcISOString(start), end_time: toUtcISOString(end), is_available: true })
     .select()
     .single();
 
@@ -488,9 +486,9 @@ exports.deleteAvailability = asyncHandler(async (req, res) => {
     .from('sessions')
     .select('*', { count: 'exact', head: true })
     .eq('tutor_id', tutorId)
-    .in('status', ['pending', 'confirmed'])
-    .lt('start_time', slot.end_time)
-    .gt('end_time', slot.start_time);
+    .in('status', ['pending', 'confirmed', 'in-progress'])
+    .lt('start_time', toUtcISOString(slot.end_time))
+    .gt('end_time', toUtcISOString(slot.start_time));
 
   if (bookingError) throw new AppError('Failed to validate booked sessions', 500);
   if (count > 0) throw new AppError('Cannot delete availability with active booked sessions', 409);

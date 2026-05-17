@@ -6,6 +6,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { adminApi } from '../../../api/adminApi';
 import type { AdminFullOverview } from '../types/admin';
+import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 // ── Chart bucket helpers ──────────────────────────────────────────────────────
 
@@ -73,30 +74,29 @@ export function useAdminOverview(): AdminOverviewState {
   const [data, setData] = useState<AdminFullOverview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
 
-  const refresh = useCallback(() => setTick((t) => t + 1), []);
-
-  useEffect(() => {
-    let cancelled = false;
-    setIsLoading(true);
+  const loadOverview = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
     setError(null);
 
-    adminApi
-      .getAdminFullOverview()
-      .then((overview) => {
-        if (!cancelled) setData(overview);
-      })
-      .catch((err) => {
-        if (!cancelled)
-          setError(err instanceof Error ? err.message : 'Failed to load admin overview');
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
+    try {
+      setData(await adminApi.getAdminFullOverview());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load admin overview');
+    } finally {
+      if (!silent) setIsLoading(false);
+    }
+  }, []);
 
-    return () => { cancelled = true; };
-  }, [tick]);
+  const refresh = useCallback(() => {
+    void loadOverview();
+  }, [loadOverview]);
+
+  useEffect(() => {
+    loadOverview();
+  }, [loadOverview]);
+
+  useAutoRefresh(() => loadOverview(true), { intervalMs: 30_000 });
 
   // ── Derived chart series (memoised implicitly via data reference) ────────────
   const charts = data?.charts;

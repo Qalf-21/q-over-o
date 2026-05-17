@@ -2,6 +2,7 @@ import { reviewApi } from '../../api/reviewApi';
 import { sessionApi } from '../../api/sessionApi';
 import { tutorApi } from '../../api/tutorApi';
 import { walletApi } from '../../api/walletApi';
+import { parseUtcDate } from '../../utils/dateTime';
 import type {
   BookingRequest,
   ReviewSubmission,
@@ -11,7 +12,7 @@ import type {
 } from './tutor';
 
 const addMinutes = (isoDateTime: string, minutes: number) =>
-  new Date(new Date(isoDateTime).getTime() + minutes * 60000).toISOString();
+  new Date(parseUtcDate(isoDateTime).getTime() + minutes * 60000).toISOString();
 
 class TuteeService {
   searchTutors(filters: SearchFilters): Promise<{ success: boolean; data: TutorSearchResult[] }> {
@@ -26,8 +27,10 @@ class TuteeService {
     return sessionApi.bookSession({
       tutor_id: booking.tutorId,
       subject_id: booking.subjectId || booking.subject,
-      start_time: new Date(booking.scheduledAt).toISOString(),
-      end_time: addMinutes(booking.scheduledAt, booking.duration)
+      start_time: parseUtcDate(booking.scheduledAt).toISOString(),
+      end_time: addMinutes(booking.scheduledAt, booking.duration),
+      topic: booking.notes,
+      notes: booking.notes
     });
   }
 

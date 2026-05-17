@@ -28,6 +28,7 @@ import { AdminSectionPage } from '../features/admin/pages/AdminSectionPage';
 import { AdminAuditLogs } from '../features/admin/pages/AdminAuditLogs';
 import { AdminSubjectRequests } from '../features/admin/pages/AdminSubjectRequests';
 import { adminApi } from '../api/adminApi';
+import { JaasMeetingPage } from '../features/sessions/JaasMeetingPage';
 
 // ── Role-aware redirect for the dashboard index ──────────────────────────────
 // Tutors  → /dashboard/overview
@@ -135,6 +136,15 @@ const App: React.FC = () => {
 
           {/* ── Public marketplace tutor page ── */}
           <Route path="/tutors/:id" element={<TutorPublicPage />} />
+
+          <Route
+            path="/session/:id/join"
+            element={
+              <ProtectedRoute>
+                <JaasMeetingPage />
+              </ProtectedRoute>
+            }
+          />
 
           {/* ── Protected dashboard (all routes, including /dashboard/profile) ── */}
           <Route

@@ -7,7 +7,9 @@
 
 'use strict';
 
-require('dotenv').config();
+const path = require('path');
+
+require('dotenv').config({ path: process.env.DOTENV_CONFIG_PATH || path.join(__dirname, '.env') });
 
 const express    = require('express');
 const cors       = require('cors');

@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Video, Clock, User, CheckCircle, XCircle, PlayCircle } from 'lucide-react';
 import type { Session } from '../../../types/tutor';
+import { parseUtcDate } from '../../../utils/dateTime';
 
 interface SessionCardProps {
   session: Session;
@@ -33,10 +34,13 @@ export const SessionCard: React.FC<SessionCardProps> = ({
 
   const isPending = session.status === 'pending';
   const isConfirmed = session.status === 'confirmed';
-  const scheduledDate = new Date(session.scheduledAt);
+  const scheduledDate = parseUtcDate(session.scheduledAt);
+  const scheduledEndDate = session.scheduledEnd
+    ? parseUtcDate(session.scheduledEnd)
+    : new Date(scheduledDate.getTime() + session.duration * 60 * 1000);
   const now = new Date();
   const joinOpensAt = new Date(scheduledDate.getTime() - 5 * 60 * 1000);
-  const joinClosesAt = new Date(scheduledDate.getTime() + 10 * 60 * 1000);
+  const joinClosesAt = new Date(scheduledEndDate.getTime() + 10 * 60 * 1000);
   const canJoin =
     (session.status === 'confirmed' || session.status === 'in-progress') &&
     Boolean(session.meetingLink) &&
@@ -53,7 +57,7 @@ export const SessionCard: React.FC<SessionCardProps> = ({
     minute: '2-digit'
   });
   const formattedEndTime = session.scheduledEnd
-    ? new Date(session.scheduledEnd).toLocaleTimeString('en-KE', {
+    ? scheduledEndDate.toLocaleTimeString('en-KE', {
         hour: '2-digit',
         minute: '2-digit'
       })
@@ -95,7 +99,7 @@ export const SessionCard: React.FC<SessionCardProps> = ({
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <User className="w-4 h-4" />
-          <span>Topic: {session.topic}</span>
+          <span>Specific topic: {session.topic || 'Not provided'}</span>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <Video className="w-4 h-4" />

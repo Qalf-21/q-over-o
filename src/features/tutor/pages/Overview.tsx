@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../shared/hooks/useAuth';
 import { StatCard } from '../../dashboard/components/StatCard';
 import { SessionCard } from '../../dashboard/components/SessionCard';
@@ -9,6 +9,7 @@ import type { TutorQualification } from '../../../types/tutor';
 import { sessionApi } from '../../../api/sessionApi';
 import { walletApi } from '../../../api/walletApi';
 import { tutorApi } from '../../../api/tutorApi';
+import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 export const Overview: React.FC = () => {
   const { user } = useAuth();
@@ -18,9 +19,9 @@ export const Overview: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadOverview = async () => {
+  const loadOverview = useCallback(async (silent = false) => {
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       setError(null);
       const [sessionResponse, walletResponse, qualificationResponse] = await Promise.all([
         sessionApi.getTutorSessions(),
@@ -33,13 +34,15 @@ export const Overview: React.FC = () => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard');
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadOverview();
-  }, []);
+  }, [loadOverview]);
+
+  useAutoRefresh(() => loadOverview(true), { intervalMs: 30_000 });
 
   const stats = useMemo(() => {
     const active = sessions.filter(session => ['pending', 'confirmed', 'in-progress'].includes(session.status));

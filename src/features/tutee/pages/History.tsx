@@ -1,30 +1,33 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { BookOpen, Clock, Loader2, TrendingUp } from 'lucide-react';
 import type { TuteeSession } from '../tutor';
 import { sessionApi } from '../../../api/sessionApi';
+import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 export const History: React.FC = () => {
   const [sessions, setSessions] = useState<TuteeSession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const loadHistory = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const response = await sessionApi.getTuteeSessions();
-        setSessions(response.data.filter(session => session.status === 'completed'));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load learning history');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadHistory();
+  const loadHistory = useCallback(async (silent = false) => {
+    try {
+      if (!silent) setIsLoading(true);
+      setError(null);
+      const response = await sessionApi.getTuteeSessions();
+      setSessions(response.data.filter(session => session.status === 'completed'));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load learning history');
+    } finally {
+      if (!silent) setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  useAutoRefresh(() => loadHistory(true), { intervalMs: 30_000 });
 
   const history = useMemo(() => {
     const totalHours = sessions.reduce((sum, session) => sum + session.duration / 60, 0);

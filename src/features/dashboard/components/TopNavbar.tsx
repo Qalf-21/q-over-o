@@ -11,6 +11,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import type { User } from '../../auth/types';
 import { walletApi } from '../../../api/walletApi';
 import { notificationApi, type AppNotification } from '../../../api/notificationApi';
+import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 interface TopNavbarProps {
   user: User | null;
@@ -45,23 +46,24 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   const knownNotificationIds = useRef<Set<string>>(new Set());
   const hasLoadedNotifications = useRef(false);
 
-  useEffect(() => {
-    if (!showWallet) return; // no need to fetch if we won't display it
-    let cancelled = false;
-    const load = async () => {
-      try {
-        setIsFetching(true);
-        const { data } = await walletApi.getWallet();
-        if (!cancelled) setBalance(data.balance);
-      } catch {
-        // silently fail — balance stays null
-      } finally {
-        if (!cancelled) setIsFetching(false);
-      }
-    };
-    load();
-    return () => { cancelled = true; };
+  const loadBalance = useCallback(async (silent = false) => {
+    if (!showWallet) return;
+    try {
+      if (!silent) setIsFetching(true);
+      const { data } = await walletApi.getWallet();
+      setBalance(data.balance);
+    } catch {
+      // silently fail — balance stays null
+    } finally {
+      if (!silent) setIsFetching(false);
+    }
   }, [showWallet]);
+
+  useEffect(() => {
+    loadBalance();
+  }, [loadBalance]);
+
+  useAutoRefresh(() => loadBalance(true), { enabled: showWallet, intervalMs: 15_000 });
 
   const applyNotifications = useCallback((items: AppNotification[], nextUnreadCount: number) => {
     const nextIds = new Set(items.map(notification => notification.id));

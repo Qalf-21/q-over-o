@@ -2,6 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Clock, Calendar, BookOpen, Video, MessageSquare } from 'lucide-react';
 import type { Session } from '../../../types/tutor';
+import { parseUtcDate } from '../../../utils/dateTime';
 
 interface SessionDetailModalProps {
   session: Session | null;
@@ -20,7 +21,7 @@ export const SessionDetailModal: React.FC<SessionDetailModalProps> = ({
 }) => {
   if (!session) return null;
 
-  const scheduledDate = new Date(session.scheduledAt);
+  const scheduledDate = parseUtcDate(session.scheduledAt);
   const formattedDate = scheduledDate.toLocaleDateString('en-KE', {
     weekday: 'long',
     year: 'numeric',

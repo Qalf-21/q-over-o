@@ -5,16 +5,17 @@
 //  • Filters logged-in tutor's own card from the discover list
 //  • handleBooking refreshes wallet after booking
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { SearchFilters } from '../components/SearchFilters';
 import { TutorCard } from '../components/TutorCard';
 import { BookingModal } from '../components/BookingModal';
 import { TutorProfileModal } from '../../../shared/components/TutorProfileModal';
 import { Loader2, GraduationCap } from 'lucide-react';
-import type { TutorSearchResult, SearchFilters as Filters, BookingRequest } from '../../../types/tutor';
+import type { TutorSearchResult, SearchFilters as Filters } from '../../../types/tutor';
 import { tutorApi } from '../../../api/tutorApi';
 import { walletApi } from '../../../api/walletApi';
 import { useAuth } from '../../../shared/hooks/useAuth';
+import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 export const Discover: React.FC = () => {
   const { user } = useAuth();
@@ -26,12 +27,9 @@ export const Discover: React.FC = () => {
   const [bookingTutor, setBookingTutor] = useState<TutorSearchResult | null>(null);
   const [profileTutor, setProfileTutor] = useState<TutorSearchResult | null>(null);
 
-  useEffect(() => {
-    let ignore = false;
-
-    const loadDiscoverData = async () => {
+  const loadDiscoverData = useCallback(async (silent = false) => {
       try {
-        setIsLoading(true);
+        if (!silent) setIsLoading(true);
         setError(null);
 
         // Fetch tutors and wallet independently so a missing wallet
@@ -41,42 +39,41 @@ export const Discover: React.FC = () => {
           walletApi.getWallet(),
         ]);
 
-        if (!ignore) {
-          if (tutorResult.status === 'fulfilled') {
-            let filtered = tutorResult.value.data.filter(t => t.id !== user?.id);
-            // Client-side safety net: enforce availableNow filter locally
-            // so unavailable tutors never slip through even if backend misfires.
-            if (filters.availableNow) {
-              filtered = filtered.filter(t => t.isAvailable === true);
-            }
-            setTutors(filtered);
-          } else {
-            setError(tutorResult.reason instanceof Error
-              ? tutorResult.reason.message
-              : 'Failed to load tutors');
+        if (tutorResult.status === 'fulfilled') {
+          let filtered = tutorResult.value.data.filter(t => t.id !== user?.id);
+          // Client-side safety net: enforce availableNow filter locally
+          // so unavailable tutors never slip through even if backend misfires.
+          if (filters.availableNow) {
+            filtered = filtered.filter(t => t.isAvailable === true);
           }
-
-          if (walletResult.status === 'fulfilled') {
-            setUserTokens(walletResult.value.data.balance);
-          }
-          // Wallet error is silently ignored — balance stays 0,
-          // the backend now auto-creates it on next request.
+          setTutors(filtered);
+        } else {
+          setError(tutorResult.reason instanceof Error
+            ? tutorResult.reason.message
+            : 'Failed to load tutors');
         }
-      } finally {
-        if (!ignore) setIsLoading(false);
-      }
-    };
 
-    loadDiscoverData();
-    return () => { ignore = true; };
+        if (walletResult.status === 'fulfilled') {
+          setUserTokens(walletResult.value.data.balance);
+        }
+        // Wallet error is silently ignored — balance stays 0,
+        // the backend now auto-creates it on next request.
+      } finally {
+        if (!silent) setIsLoading(false);
+      }
   }, [filters, user?.id]);
+
+  useEffect(() => {
+    loadDiscoverData();
+  }, [loadDiscoverData]);
+
+  useAutoRefresh(() => loadDiscoverData(true), { intervalMs: 30_000 });
 
   const handleClearFilters = () => setFilters({ query: '' });
 
-  const handleBooking = async (_booking: BookingRequest) => {
+  const handleBooking = async () => {
     const walletResponse = await walletApi.getWallet();
     setUserTokens(walletResponse.data.balance);
-    setBookingTutor(null);
   };
 
   // "Book Session" initiated from profile modal
@@ -149,13 +146,16 @@ export const Discover: React.FC = () => {
       )}
 
       {/* Booking modal — currentUserId prevents self-booking */}
-      <BookingModal
-        tutor={bookingTutor}
-        currentUserId={user?.id}
-        userTokens={userTokens}
-        onClose={() => setBookingTutor(null)}
-        onConfirm={handleBooking}
-      />
+      {bookingTutor && (
+        <BookingModal
+          key={bookingTutor.id}
+          tutor={bookingTutor}
+          currentUserId={user?.id}
+          userTokens={userTokens}
+          onClose={() => setBookingTutor(null)}
+          onConfirm={handleBooking}
+        />
+      )}
     </div>
   );
 };

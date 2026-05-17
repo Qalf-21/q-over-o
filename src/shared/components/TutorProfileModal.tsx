@@ -9,7 +9,7 @@
 //   onClose     — close the modal
 //   onBook      — called when the "Book Session" button is pressed (omit for tutors)
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -26,6 +26,7 @@ import {
 import { tutorApi } from '../../api/tutorApi';
 import { reviewApi } from '../../api/reviewApi';
 import type { TutorSearchResult } from '../../types/tutor';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 
 // ── Star renderer ─────────────────────────────────────────────────────────────
 
@@ -96,25 +97,28 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
     return () => { document.body.style.overflow = prev; };
   }, []);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setIsLoading(true);
-        setLoadError(null);
-        const [tutorRes, reviewRes] = await Promise.all([
-          tutorApi.getTutor(tutorId),
-          reviewApi.getTutorReviews(tutorId),
-        ]);
-        setTutor(tutorRes.data);
-        setReviews(reviewRes.data ?? []);
-      } catch (err) {
-        setLoadError(err instanceof Error ? err.message : 'Failed to load profile');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    load();
+  const load = useCallback(async (silent = false) => {
+    try {
+      if (!silent) setIsLoading(true);
+      setLoadError(null);
+      const [tutorRes, reviewRes] = await Promise.all([
+        tutorApi.getTutor(tutorId),
+        reviewApi.getTutorReviews(tutorId),
+      ]);
+      setTutor(tutorRes.data);
+      setReviews(reviewRes.data ?? []);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load profile');
+    } finally {
+      if (!silent) setIsLoading(false);
+    }
   }, [tutorId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useAutoRefresh(() => load(true), { intervalMs: 30_000 });
 
   // Viewing own profile → never show book button
   const isSelf = currentUserId === tutorId;

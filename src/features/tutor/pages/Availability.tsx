@@ -2,7 +2,7 @@
 //
 // Changes from previous version:
 //  • Modal matches other modals (gradient header bar, spring animation, backdrop blur)
-//  • Full 24-hour time selection (00:00 – 23:00 every hour)
+//  • Exact start-time selection with 1-hour duration increments
 //  • Today is selectable in the date picker (min = today, not tomorrow)
 //  • When today is selected, start times before the current hour are disabled
 //  • Slots are date-specific (not recurring weekly) — expired slots are filtered out client-side
@@ -14,40 +14,55 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, Plus, Trash2, Calendar, CheckCircle2, Loader2, AlertCircle, X } from 'lucide-react';
 import { tutorApi } from '../../../api/tutorApi';
 import type { TimeSlot } from '../tutor';
+import { localDateKey, parseUtcDate } from '../../../utils/dateTime';
+import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-/** All 24 hours as HH:00 strings */
-const ALL_HOURS: string[] = Array.from({ length: 24 }, (_, i) =>
-  `${String(i).padStart(2, '0')}:00`
-);
+const AVAILABILITY_LEAD_MINUTES = 10;
+const MIN_AVAILABILITY_HOURS = 1;
+const MAX_AVAILABILITY_HOURS = 8;
 
 const fmt12 = (hhmm: string) => {
-  const [h] = hhmm.split(':').map(Number);
+  const [h, m = 0] = hhmm.split(':').map(Number);
   const suffix = h >= 12 ? 'PM' : 'AM';
   const h12 = h % 12 || 12;
-  return `${h12}:00 ${suffix}`;
+  return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
 };
 
-const toHHMM = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
+const toHHMM = (iso: string) => parseUtcDate(iso).toTimeString().slice(0, 5);
+
+const addHoursToTime = (hhmm: string, hours: number) => {
+  const [hour, minute] = hhmm.split(':').map(Number);
+  const date = new Date();
+  date.setHours(hour, minute, 0, 0);
+  date.setHours(date.getHours() + hours);
+  return date.toTimeString().slice(0, 5);
+};
+
+const localDateTime = (date: string, time: string) => {
+  const [hour, minute] = time.split(':').map(Number);
+  const value = new Date(`${date}T00:00:00`);
+  value.setHours(hour, minute, 0, 0);
+  return value;
+};
 
 const normalizeSlot = (slot: any): TimeSlot => {
   const startRaw = slot.start_time ?? slot.startTime;
   const endRaw   = slot.end_time   ?? slot.endTime;
   if (startRaw && startRaw.includes('T')) {
-    const start = new Date(startRaw);
-    const end   = new Date(endRaw);
+    const start = parseUtcDate(startRaw);
     return {
       id:          slot.id,
       dayOfWeek:   start.getDay(),
-      startTime:   toHHMM(start.toISOString()),
-      endTime:     toHHMM(end.toISOString()),
+      startTime:   toHHMM(startRaw),
+      endTime:     toHHMM(endRaw),
       isAvailable: slot.is_available ?? slot.isAvailable ?? true,
       // Keep the raw ISO so we can check expiry
       _startISO:   startRaw,
       _endISO:     endRaw,
-      _date:       startRaw.slice(0, 10),
+      _date:       localDateKey(startRaw),
     } as any;
   }
   return {
@@ -65,7 +80,7 @@ const filterExpired = (slots: any[]): any[] => {
   return slots.filter(s => {
     const endISO = s._endISO ?? null;
     if (!endISO) return true; // can't determine — keep it
-    return new Date(endISO) > now;
+    return parseUtcDate(endISO) > now;
   });
 };
 
@@ -79,7 +94,7 @@ const todayLocal = () => {
 
 interface AddSlotModalProps {
   onClose: () => void;
-  onSave: (slot: { dayOfWeek: number; startTime: string; endTime: string; date: string }) => Promise<void>;
+  onSave: (slot: { dayOfWeek: number; startTime: string; durationHours: number; date: string }) => Promise<void>;
   existingSlots: any[];
   saving: boolean;
 }
@@ -87,39 +102,43 @@ interface AddSlotModalProps {
 const AddSlotModal: React.FC<AddSlotModalProps> = ({ onClose, onSave, existingSlots, saving }) => {
   const [selectedDate, setSelectedDate] = useState('');
   const [startTime,    setStart]        = useState('');
-  const [endTime,      setEnd]          = useState('');
+  const [durationHours, setDurationHours] = useState(MIN_AVAILABILITY_HOURS);
   const [modalError,   setModalError]   = useState<string | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const today      = todayLocal();
-  const isToday    = selectedDate === today;
-  const currentHour = new Date().getHours(); // e.g. 14 → block 00–13 when today is selected
-
   const dayOfWeek  = selectedDate ? new Date(selectedDate + 'T12:00:00').getDay() : -1;
+  const endTime = startTime ? addHoursToTime(startTime, durationHours) : '';
 
   const handleSave = async () => {
-    if (!selectedDate)          { setModalError('Please select a date.');                        return; }
-    if (!startTime || !endTime) { setModalError('Please select both a start and end time.');     return; }
-    if (startTime >= endTime)   { setModalError('Start time must be before end time.');          return; }
+    if (!selectedDate) { setModalError('Please select a date.'); return; }
+    if (!startTime) { setModalError('Please select a start time.'); return; }
+    if (durationHours < MIN_AVAILABILITY_HOURS || durationHours > MAX_AVAILABILITY_HOURS) {
+      setModalError('Availability duration must be between 1 and 8 hours.');
+      return;
+    }
 
-    // If today + start time already past, reject
-    if (isToday && parseInt(startTime) < currentHour) {
-      setModalError('Start time has already passed for today. Please pick a future hour.');
+    const startDate = localDateTime(selectedDate, startTime);
+    const endDate = new Date(startDate.getTime() + durationHours * 60 * 60 * 1000);
+    const earliestStart = new Date(Date.now() + AVAILABILITY_LEAD_MINUTES * 60 * 1000);
+
+    if (startDate < earliestStart) {
+      setModalError('Start time must be at least 10 minutes from now.');
       return;
     }
 
     const conflict = existingSlots.some(
       s => s.dayOfWeek === dayOfWeek &&
         s._date === selectedDate && // same specific date
-        ((startTime >= s.startTime && startTime < s.endTime) ||
-         (endTime > s.startTime   && endTime   <= s.endTime) ||
-         (startTime <= s.startTime && endTime  >= s.endTime))
+        ((startDate >= localDateTime(selectedDate, s.startTime) && startDate < localDateTime(selectedDate, s.endTime)) ||
+         (endDate > localDateTime(selectedDate, s.startTime) && endDate <= localDateTime(selectedDate, s.endTime)) ||
+         (startDate <= localDateTime(selectedDate, s.startTime) && endDate >= localDateTime(selectedDate, s.endTime)))
     );
     if (conflict) { setModalError('This time overlaps with an existing slot on that day.'); return; }
 
     setModalError(null);
     try {
-      await onSave({ dayOfWeek, startTime, endTime, date: selectedDate });
+      await onSave({ dayOfWeek, startTime, durationHours, date: selectedDate });
     } catch (err: any) {
       setModalError(err?.message ?? 'Failed to save the time slot. Please try again.');
     }
@@ -199,7 +218,6 @@ const AddSlotModal: React.FC<AddSlotModalProps> = ({ onClose, onSave, existingSl
               onChange={e => {
                 setSelectedDate(e.target.value);
                 setStart('');
-                setEnd('');
                 setModalError(null);
               }}
               className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-gray-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
@@ -209,72 +227,46 @@ const AddSlotModal: React.FC<AddSlotModalProps> = ({ onClose, onSave, existingSl
             )}
           </div>
 
-          {/* Start time */}
           <div>
-            <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+            <label htmlFor="availability-start-time" className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
               <Clock className="w-4 h-4 text-indigo-500" /> Start Time
-              {isToday && (
-                <span className="text-xs text-gray-400 font-normal">(past hours disabled)</span>
-              )}
-            </p>
-            <div className="grid grid-cols-4 gap-1.5 max-h-40 overflow-y-auto pr-1">
-              {ALL_HOURS.map(t => {
-                const disabled = (isToday && parseInt(t) < currentHour) || (endTime !== '' && t >= endTime);
-                return (
-                  <button
-                    key={t}
-                    onClick={() => {
-                      if (disabled) return;
-                      setStart(t);
-                      if (endTime && endTime <= t) setEnd('');
-                      setModalError(null);
-                    }}
-                    disabled={disabled}
-                    className={`py-2 rounded-xl text-xs font-medium transition-all ${
-                      startTime === t
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : disabled
-                        ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                        : 'bg-gray-50 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
-                    }`}
-                  >
-                    {fmt12(t)}
-                  </button>
-                );
-              })}
-            </div>
+            </label>
+            <input
+              id="availability-start-time"
+              type="time"
+              step={60}
+              value={startTime}
+              onChange={(e) => {
+                setStart(e.target.value);
+                setModalError(null);
+              }}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-gray-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+            />
+            <p className="mt-1.5 text-xs text-gray-400">Start time must be at least 10 minutes from now.</p>
           </div>
 
-          {/* End time */}
           <div>
             <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-indigo-500" /> End Time
-              {!startTime && <span className="text-xs text-gray-400 font-normal">(pick a start first)</span>}
+              <Clock className="w-4 h-4 text-indigo-500" /> Duration
             </p>
-            <div className="grid grid-cols-4 gap-1.5 max-h-40 overflow-y-auto pr-1">
-              {ALL_HOURS.map(t => {
-                const disabled = !startTime || t <= startTime;
-                return (
-                  <button
-                    key={t}
-                    onClick={() => {
-                      if (disabled) return;
-                      setEnd(t);
-                      setModalError(null);
-                    }}
-                    disabled={disabled}
-                    className={`py-2 rounded-xl text-xs font-medium transition-all ${
-                      endTime === t
+            <div className="grid grid-cols-4 gap-1.5">
+              {Array.from({ length: MAX_AVAILABILITY_HOURS }, (_, index) => index + 1).map(hours => (
+                <button
+                  key={hours}
+                  onClick={() => {
+                    setDurationHours(hours);
+                    setModalError(null);
+                  }}
+                  type="button"
+                  className={`py-2 rounded-xl text-xs font-medium transition-all ${
+                      durationHours === hours
                         ? 'bg-indigo-600 text-white shadow-sm'
-                        : disabled
-                        ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
                         : 'bg-gray-50 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
                     }`}
-                  >
-                    {fmt12(t)}
-                  </button>
-                );
-              })}
+                >
+                  {hours}h
+                </button>
+              ))}
             </div>
           </div>
 
@@ -304,7 +296,7 @@ const AddSlotModal: React.FC<AddSlotModalProps> = ({ onClose, onSave, existingSl
         <div className="px-6 pb-6 pt-2">
           <button
             onClick={handleSave}
-            disabled={saving || !selectedDate || !startTime || !endTime}
+            disabled={saving || !selectedDate || !startTime}
             className="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-md shadow-indigo-200"
           >
             {saving && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -327,8 +319,8 @@ export const Availability: React.FC = () => {
   const [deletingId,  setDeletingId]  = useState<string | null>(null);
   const [error,       setError]       = useState<string | null>(null);
 
-  const fetchAvailability = useCallback(async () => {
-    setLoading(true);
+  const fetchAvailability = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     const [profileResult, slotsResult] = await Promise.allSettled([
       tutorApi.getMyProfile(),
@@ -351,10 +343,11 @@ export const Availability: React.FC = () => {
     } else {
       setError('Could not load your saved time slots. You can still add new ones.');
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, []);
 
   useEffect(() => { fetchAvailability(); }, [fetchAvailability]);
+  useAutoRefresh(() => fetchAvailability(true), { intervalMs: 30_000 });
 
   // Periodically clean up expired slots from local state (every minute)
   useEffect(() => {
@@ -379,7 +372,7 @@ export const Availability: React.FC = () => {
   const handleSaveSlot = async (newSlot: {
     dayOfWeek: number;
     startTime: string;
-    endTime: string;
+    durationHours: number;
     date: string;
   }) => {
     setSaving(true);
@@ -392,7 +385,7 @@ export const Availability: React.FC = () => {
         return d.toISOString();
       };
       const startISO = buildISO(newSlot.date, newSlot.startTime);
-      const endISO   = buildISO(newSlot.date, newSlot.endTime);
+      const endISO   = new Date(parseUtcDate(startISO).getTime() + newSlot.durationHours * 60 * 60 * 1000).toISOString();
 
       const res = await tutorApi.createAvailability({
         dayOfWeek: newSlot.dayOfWeek,
@@ -409,10 +402,10 @@ export const Availability: React.FC = () => {
           id:        Date.now().toString(),
           dayOfWeek: newSlot.dayOfWeek,
           startTime: newSlot.startTime,
-          endTime:   newSlot.endTime,
+          endTime:   addHoursToTime(newSlot.startTime, newSlot.durationHours),
           isAvailable: true,
           _date:     newSlot.date,
-          _endISO:   buildISO(newSlot.date, newSlot.endTime),
+          _endISO:   endISO,
         };
         setSlots(prev => filterExpired([...prev, fallback]));
       }
