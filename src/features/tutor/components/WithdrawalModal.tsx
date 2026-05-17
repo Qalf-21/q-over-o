@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CreditCard, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { AuthButton } from '../../../shared/components/AuthButton';
+import { tokensToKes } from '../../wallet/utils/tokenPackages';
 
 interface WithdrawModalProps {
   isOpen: boolean;
@@ -22,14 +23,14 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const tokenToKes = (tokens: number) => tokens * 2;
   const numericAmount = parseInt(amount) || 0;
-  const kesAmount = tokenToKes(numericAmount);
+  const kesAmount = tokensToKes(numericAmount);
   const hasEnoughBalance = numericAmount <= availableBalance && numericAmount >= 100;
+  const isValidIncrement = numericAmount % 10 === 0;
 
   const handleSubmit = async () => {
-    if (!hasEnoughBalance || !phoneNumber.match(/^07\d{8}$/)) {
-      setError('Please enter a valid amount and M-Pesa number');
+    if (!hasEnoughBalance || !isValidIncrement || !phoneNumber.match(/^(?:07|01)\d{8}$|^\+?254(?:7|1)\d{8}$/)) {
+      setError('Enter at least 100 tokens in 10-token increments and a valid M-Pesa number');
       return;
     }
     setStep('confirm');
@@ -100,6 +101,7 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
                     <input
                       type="number"
                       min="100"
+                      step="10"
                       max={availableBalance}
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
@@ -107,7 +109,7 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
                       className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all text-lg font-semibold"
                     />
                     <p className="text-sm text-gray-500 mt-1">
-                      = KES {kesAmount.toLocaleString()} • Min: 100 tokens
+                      = KES {kesAmount.toLocaleString()} • Min: 100 tokens (KES 10)
                     </p>
                   </div>
 
@@ -139,7 +141,7 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
 
                   <AuthButton
                     onClick={handleSubmit}
-                    disabled={!hasEnoughBalance || !phoneNumber}
+                    disabled={!hasEnoughBalance || !isValidIncrement || !phoneNumber}
                     icon={<CreditCard className="w-5 h-5" />}
                   >
                     Continue
@@ -160,7 +162,7 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                     <p className="text-sm text-amber-800">
                       Tokens will be converted to KES {kesAmount.toLocaleString()} and sent to your M-Pesa. 
-                      Processing takes 1-5 minutes.
+                      Processing usually takes 1-5 minutes in sandbox after Daraja accepts the B2C request.
                     </p>
                   </div>
 

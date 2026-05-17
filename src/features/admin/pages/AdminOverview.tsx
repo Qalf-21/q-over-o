@@ -140,7 +140,7 @@ const userColumns: TableColumn<RecentUser>[] = [
     header: 'User',
     render: (r) => (
       <div>
-        <p className="text-sm font-semibold text-white">{fullName(r as any)}</p>
+        <p className="text-sm font-semibold text-white">{fullName(r)}</p>
         <p className="text-xs text-slate-400">{r.email}</p>
       </div>
     ),

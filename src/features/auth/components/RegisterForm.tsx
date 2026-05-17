@@ -77,7 +77,7 @@ export const RegisterForm: React.FC = () => {
     try {
       await register(formData.first_name, formData.last_name, formData.email, formData.password);
       navigate('/dashboard', { replace: true });
-    } catch (err) {
+    } catch {
       // Error handled by context
     }
   };

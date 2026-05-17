@@ -207,7 +207,7 @@ export const TutorPublicPage: React.FC = () => {
         reviewApi.getTutorReviews(id).catch(() => ({ data: [] })),
       ]);
       setTutor(tutorRes.data as unknown as TutorDetail);
-      setReviews((reviewRes as any).data ?? []);
+      setReviews((reviewRes as { data?: Review[] }).data ?? []);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load tutor profile');
     } finally {

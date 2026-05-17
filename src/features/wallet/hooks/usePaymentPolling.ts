@@ -45,10 +45,13 @@ export function usePaymentPolling(
     if (!paymentIntentId) return;
 
     activeRef.current = true;
-    setIsPolling(true);
-    setStatus('pending');
-    setReceipt(null);
-    setTokensAdded(null);
+    void Promise.resolve().then(() => {
+      if (!activeRef.current) return;
+      setIsPolling(true);
+      setStatus('pending');
+      setReceipt(null);
+      setTokensAdded(null);
+    });
 
     const poll = async () => {
       if (!activeRef.current) return;
@@ -88,7 +91,7 @@ export function usePaymentPolling(
     }, POLL_TIMEOUT_MS);
 
     return () => stopPolling();
-  }, [paymentIntentId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [paymentIntentId, onComplete, stopPolling]);
 
   return { status, receipt, tokensAdded, isPolling, stopPolling };
 }

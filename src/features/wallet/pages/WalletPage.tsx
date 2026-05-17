@@ -19,7 +19,7 @@ export const WalletPage: React.FC = () => {
   const [showDeposit, setShowDeposit] = useState(false);
 
   const handleDepositSuccess = useCallback(
-    async (_tokensAdded: number) => {
+    async () => {
       // Wallet balance is NOT updated locally.
       // We refresh from backend to reflect verified state.
       await refresh();

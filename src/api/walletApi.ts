@@ -17,18 +17,57 @@ import type {
 
 // ── Normalisers ───────────────────────────────────────────────────────────────
 
-const normalizeTransaction = (t: any): WalletTransaction => ({
-  id:           t.id,
+type RawTransaction = {
+  id?: string;
+  type?: WalletTransaction['type'];
+  amount?: number;
+  amount_tokens?: number;
+  description?: string;
+  reference?: string;
+  status?: string;
+  createdAt?: string;
+  created_at?: string;
+  sessionId?: string;
+  session_id?: string;
+  mpesaReceiptNumber?: string;
+  mpesa_receipt_number?: string;
+};
+
+type RawWallet = {
+  balance?: number;
+  balance_tokens?: number;
+  escrowBalance?: number;
+  escrow_balance?: number;
+  totalDeposited?: number;
+  total_deposited?: number;
+  totalSpent?: number;
+  total_spent?: number;
+  transactions?: RawTransaction[];
+};
+
+type RawPaymentStatus = {
+  id?: string;
+  status?: PaymentStatusResponse['status'];
+  tokensExpected?: number;
+  tokens_expected?: number;
+  mpesaReceiptNumber?: string;
+  mpesa_receipt_number?: string;
+  updatedAt?: string;
+  updated_at?: string;
+};
+
+const normalizeTransaction = (t: RawTransaction): WalletTransaction => ({
+  id:           t.id || '',
   type:         t.type || 'credit',
   amount:       Math.abs(t.amount ?? t.amount_tokens ?? 0),
   description:  t.description || t.reference || t.type || 'Wallet transaction',
-  status:       t.status === 'success' ? 'completed' : (t.status || 'completed'),
+  status:       t.status === 'success' ? 'completed' : ((t.status || 'completed') as WalletTransaction['status']),
   createdAt:    t.createdAt || t.created_at || '',
   sessionId:    t.sessionId || t.session_id,
   mpesaReceipt: t.mpesaReceiptNumber || t.mpesa_receipt_number,
 });
 
-const normalizeWallet = (w: any): WalletData => ({
+const normalizeWallet = (w: RawWallet): WalletData => ({
   balance:        w.balance       ?? w.balance_tokens         ?? 0,
   escrowBalance:  w.escrowBalance ?? w.escrow_balance         ?? 0,
   totalDeposited: w.totalDeposited ?? w.total_deposited       ?? 0,
@@ -43,7 +82,7 @@ export const walletApi = {
    * Fetch the authenticated user's wallet (balance + transaction history).
    */
   async getWallet(): Promise<{ success: boolean; data: WalletData }> {
-    const response = await apiRequest<any>('/wallet', { method: 'GET' });
+    const response = await apiRequest<RawWallet>('/wallet', { method: 'GET' });
     return {
       success: response.success,
       data:    normalizeWallet(response.data || {}),
@@ -82,7 +121,7 @@ export const walletApi = {
   async getPaymentStatus(
     paymentIntentId: string,
   ): Promise<{ success: boolean; data: PaymentStatusResponse }> {
-    const response = await apiRequest<any>(
+    const response = await apiRequest<RawPaymentStatus>(
       `/wallet/purchase/${paymentIntentId}/status`,
       { method: 'GET' },
     );
@@ -90,11 +129,11 @@ export const walletApi = {
     return {
       success: response.success,
       data: {
-        id: raw.id,
-        status: raw.status,
+        id: raw.id || paymentIntentId,
+        status: raw.status || 'pending',
         tokensExpected: raw.tokensExpected ?? raw.tokens_expected ?? 0,
         mpesaReceiptNumber: raw.mpesaReceiptNumber ?? raw.mpesa_receipt_number,
-        updatedAt: raw.updatedAt ?? raw.updated_at,
+        updatedAt: raw.updatedAt ?? raw.updated_at ?? '',
       },
     };
   },

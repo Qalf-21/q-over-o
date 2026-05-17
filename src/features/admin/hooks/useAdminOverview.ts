@@ -5,7 +5,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { adminApi } from '../../../api/adminApi';
-import type { AdminFullOverview } from '../types/admin';
+import type { AdminFullOverview, PaymentChartDataPoint, UserGrowthDataPoint } from '../types/admin';
 import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 
 // ── Chart bucket helpers ──────────────────────────────────────────────────────
@@ -110,9 +110,9 @@ export function useAdminOverview(): AdminOverviewState {
 
   const revenueChart: DailyPoint[] = charts
     ? buildDailyPoints(
-        charts.revenueTimeline as any[],
-        (pts) => (pts as any[]).reduce((s: number, p: any) => s + (p.amount_kes || 0), 0),
-        (pts) => (pts as any[]).reduce((s: number, p: any) => s + (p.tokens_expected || 0), 0),
+        charts.revenueTimeline,
+        (pts) => (pts as PaymentChartDataPoint[]).reduce((s, p) => s + (p.amount_kes || 0), 0),
+        (pts) => (pts as PaymentChartDataPoint[]).reduce((s, p) => s + (p.tokens_expected || 0), 0),
       )
     : [];
 
@@ -120,22 +120,22 @@ export function useAdminOverview(): AdminOverviewState {
     ? buildDailyPoints(
         charts.userGrowth,
         (pts) => pts.length,
-        (pts) => (pts as any[]).filter((p: any) => p.role === 'tutor').length,
+        (pts) => (pts as UserGrowthDataPoint[]).filter((p) => p.role === 'tutor').length,
       )
     : [];
 
   const tutorGrowthChart: DailyPoint[] = charts
     ? buildDailyPoints(
         charts.userGrowth,
-        (pts) => (pts as any[]).filter((p: any) => p.role === 'tutor').length,
+        (pts) => (pts as UserGrowthDataPoint[]).filter((p) => p.role === 'tutor').length,
       )
     : [];
 
   const tokenPurchaseChart: DailyPoint[] = charts
     ? buildDailyPoints(
-        charts.tokenPurchases as any[],
-        (pts) => (pts as any[]).reduce((s: number, p: any) => s + (p.tokens_expected || 0), 0),
-        (pts) => (pts as any[]).reduce((s: number, p: any) => s + (p.amount_kes || 0), 0),
+        charts.tokenPurchases,
+        (pts) => (pts as PaymentChartDataPoint[]).reduce((s, p) => s + (p.tokens_expected || 0), 0),
+        (pts) => (pts as PaymentChartDataPoint[]).reduce((s, p) => s + (p.amount_kes || 0), 0),
       )
     : [];
 

@@ -7,9 +7,15 @@
 import { apiRequest } from './client';
 import type { Subject } from '../types/tutor';
 
-const normalizeSubject = (subject: any): Subject => ({
-  id:       subject.id,
-  name:     subject.name,
+type RawSubject = {
+  id?: string;
+  name?: string;
+  code?: string;
+};
+
+const normalizeSubject = (subject: RawSubject): Subject => ({
+  id:       subject.id || '',
+  name:     subject.name || 'General',
   // `category` and `level` are not stored in DB — use code as a sensible fallback
   category: subject.code || 'General',
   level:    'intermediate'
@@ -17,7 +23,7 @@ const normalizeSubject = (subject: any): Subject => ({
 
 export const subjectApi = {
   async getSubjects() {
-    const response = await apiRequest<any[]>('/subjects', { method: 'GET', auth: false });
+    const response = await apiRequest<RawSubject[]>('/subjects', { method: 'GET', auth: false });
     return {
       success: response.success,
       data: (response.data || []).map(normalizeSubject)

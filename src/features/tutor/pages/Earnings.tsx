@@ -5,6 +5,8 @@ import { TokenDisplay } from '../../dashboard/components/TokenDisplay';
 import type { Transaction } from '../tutor';
 import { walletApi } from '../../../api/walletApi';
 import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
+import { WithdrawModal } from '../components/WithdrawalModal';
+import { tokensToKes } from '../../wallet/utils/tokenPackages';
 
 export const Earnings: React.FC = () => {
   const [showWithdrawForm, setShowWithdrawForm] = useState(false);
@@ -41,7 +43,10 @@ export const Earnings: React.FC = () => {
     .filter(transaction => transaction.type === 'credit' && transaction.status === 'pending')
     .reduce((sum, transaction) => sum + transaction.amount, 0);
 
-  const tokenToKes = (tokens: number) => tokens / 10;
+  const handleWithdraw = async (amountTokens: number, phoneNumber: string) => {
+    await walletApi.withdraw(amountTokens, phoneNumber);
+    await loadEarnings(true);
+  };
 
   return (
     <div className="space-y-8">
@@ -89,7 +94,7 @@ export const Earnings: React.FC = () => {
           <div className="text-3xl font-bold text-gray-900">{totalEarned.toLocaleString()}</div>
           <div className="text-sm text-gray-400 mt-1">tokens</div>
           <p className="text-xs text-green-600 mt-3">
-            ≈ KES {tokenToKes(totalEarned).toLocaleString()} lifetime
+            ≈ KES {tokensToKes(totalEarned).toLocaleString()} lifetime
           </p>
         </div>
       </div>
@@ -103,7 +108,7 @@ export const Earnings: React.FC = () => {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="font-semibold text-gray-900">Withdraw to M-Pesa</h3>
-            <p className="text-sm text-gray-500 mt-1">Minimum withdrawal: 100 tokens (KES 200)</p>
+            <p className="text-sm text-gray-500 mt-1">Minimum withdrawal: 100 tokens (KES 10)</p>
           </div>
           {!showWithdrawForm && (
             <button 
@@ -116,27 +121,9 @@ export const Earnings: React.FC = () => {
           )}
         </div>
 
-        {showWithdrawForm && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-4 border-t pt-6"
-          >
-            <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
-              Withdrawals are not exposed by the configured backend endpoint list. Available wallet data is loaded from GET /api/wallet.
-            </div>
-            
-            <div className="flex gap-3">
-              <button 
-                type="button"
-                onClick={() => setShowWithdrawForm(false)}
-                className="flex-1 px-6 py-3 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </motion.div>
-        )}
+        <p className="border-t border-gray-100 pt-4 text-sm text-gray-500">
+          100 tokens converts to KES 10. Withdrawals are paid through M-Pesa B2C.
+        </p>
       </motion.div>
 
       {/* Transaction History */}
@@ -180,6 +167,12 @@ export const Earnings: React.FC = () => {
       </div>
       </>
       )}
+      <WithdrawModal
+        isOpen={showWithdrawForm}
+        onClose={() => setShowWithdrawForm(false)}
+        availableBalance={availableBalance}
+        onWithdraw={handleWithdraw}
+      />
     </div>
   );
 };

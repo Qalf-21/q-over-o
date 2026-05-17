@@ -19,14 +19,15 @@ export const AdminSectionPage: React.FC<AdminSectionPageProps> = ({
   useEffect(() => {
     if (!loadRows) return;
     let cancelled = false;
-    setIsLoading(true);
-    loadRows()
-      .then((data) => {
+    void Promise.resolve().then(async () => {
+      setIsLoading(true);
+      try {
+        const data = await loadRows();
         if (!cancelled) setRows(data);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setIsLoading(false);
-      });
+      }
+    });
     return () => { cancelled = true; };
   }, [loadRows]);
 

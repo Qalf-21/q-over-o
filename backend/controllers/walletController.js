@@ -14,6 +14,12 @@ const { normalizePhoneOrThrow }  = require('../utils/phoneNormalizer');
 const { logger, auditPayment, withCorrelationId } = require('../utils/logger');
 const paymentService     = require('../services/paymentService');
 const escrowService      = require('../services/escrowService');
+const { initiateB2CPayment } = require('../services/darajaService');
+
+const TOKENS_PER_KES = 10;
+const MIN_WITHDRAWAL_TOKENS = 100;
+
+const tokensToKes = (tokens) => tokens / TOKENS_PER_KES;
 
 // ── Helper: get or auto-create wallet ────────────────────────────────────────
 
@@ -257,11 +263,28 @@ exports.withdraw = asyncHandler(async (req, res) => {
   }
 
   const parsedAmount = parseInt(amount, 10);
-  if (isNaN(parsedAmount) || parsedAmount < 1) {
-    throw new AppError('Invalid withdrawal amount', 400, 'INVALID_AMOUNT');
+  if (!Number.isInteger(parsedAmount) || parsedAmount < MIN_WITHDRAWAL_TOKENS) {
+    throw new AppError(
+      `Minimum withdrawal is ${MIN_WITHDRAWAL_TOKENS} tokens (KES ${tokensToKes(MIN_WITHDRAWAL_TOKENS)})`,
+      400,
+      'WITHDRAWAL_AMOUNT_TOO_LOW',
+    );
+  }
+
+  if (parsedAmount % TOKENS_PER_KES !== 0) {
+    throw new AppError(
+      `Withdrawal amount must be a multiple of ${TOKENS_PER_KES} tokens`,
+      400,
+      'INVALID_WITHDRAWAL_INCREMENT',
+    );
+  }
+
+  if (payoutMethod !== 'mpesa') {
+    throw new AppError('Only M-Pesa withdrawals are currently supported', 400, 'UNSUPPORTED_PAYOUT_METHOD');
   }
 
   const normalisedPhone = normalizePhoneOrThrow(phoneNumber, AppError);
+  const amountKes = tokensToKes(parsedAmount);
 
   const result = await escrowService.initiateWithdrawal({
     tutorId:      userId,
@@ -270,9 +293,125 @@ exports.withdraw = asyncHandler(async (req, res) => {
     correlationId,
   });
 
-  res.json({
-    success: true,
-    message: 'Withdrawal request submitted. Processing within 24 hours.',
-    data: result,
+  try {
+    const b2c = await initiateB2CPayment({
+      phone: normalisedPhone,
+      amountKes,
+      remarks: `Q-over-o tutor withdrawal`,
+      occasion: result.payout_id || correlationId,
+      correlationId,
+    });
+
+    await escrowService.markWithdrawalProcessing({
+      payoutId: result.payout_id,
+      originatorConversationId: b2c.originatorConversationId,
+      conversationId: b2c.conversationId,
+      correlationId,
+    });
+
+    res.status(202).json({
+      success: true,
+      message: 'Withdrawal sent to M-Pesa. You should receive it shortly.',
+      data: {
+        ...result,
+        amountTokens: parsedAmount,
+        amountKes,
+        phoneNumber: normalisedPhone,
+        originatorConversationId: b2c.originatorConversationId,
+        conversationId: b2c.conversationId,
+        responseDescription: b2c.responseDescription,
+        correlationId,
+      },
+    });
+  } catch (err) {
+    await escrowService.refundWithdrawal({
+      payoutId: result.payout_id,
+      tutorId: userId,
+      amountTokens: parsedAmount,
+      reason: err instanceof Error ? err.message : 'M-Pesa B2C request failed',
+      correlationId,
+    });
+
+    throw err;
+  }
+});
+
+// ── M-Pesa B2C Result Handler ────────────────────────────────────────────────
+
+exports.handleB2CResult = asyncHandler(async (req, res) => {
+  const correlationId = req.headers['x-correlation-id'] || uuidv4();
+  res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
+
+  setImmediate(async () => {
+    const body = req.body || {};
+    const result = body.Result || body;
+    const resultCode = String(result.ResultCode ?? result.resultCode ?? '-1');
+    const originatorConversationId = result.OriginatorConversationID || result.OriginatorConversationId;
+    const transactionId = result.TransactionID || result.TransactionId || null;
+
+    auditPayment({
+      event: 'b2c_result_received',
+      originatorConversationId,
+      resultCode,
+      transactionId,
+      correlationId,
+    });
+
+    const payout = await escrowService.findWithdrawalByOriginatorConversationId(originatorConversationId);
+    if (!payout) return;
+
+    const payoutId = payout.id || payout.payout_id;
+    const tutorId = payout.tutor_id || payout.user_id;
+    const amountTokens = Number(payout.amount_tokens || payout.amount || 0);
+
+    if (resultCode === '0') {
+      await escrowService.markWithdrawalSucceeded({
+        payoutId,
+        transactionId,
+        resultPayload: body,
+        correlationId,
+      });
+      return;
+    }
+
+    await escrowService.refundWithdrawal({
+      payoutId,
+      tutorId,
+      amountTokens,
+      reason: result.ResultDesc || result.ResultDescription || 'M-Pesa B2C payout failed',
+      resultPayload: body,
+      correlationId,
+    });
+  });
+});
+
+// ── M-Pesa B2C Timeout Handler ───────────────────────────────────────────────
+
+exports.handleB2CTimeout = asyncHandler(async (req, res) => {
+  const correlationId = req.headers['x-correlation-id'] || uuidv4();
+  res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
+
+  setImmediate(async () => {
+    const body = req.body || {};
+    const result = body.Result || body;
+    const originatorConversationId = result.OriginatorConversationID || result.OriginatorConversationId;
+
+    auditPayment({
+      event: 'b2c_timeout_received',
+      originatorConversationId,
+      correlationId,
+    });
+
+    const payout = await escrowService.findWithdrawalByOriginatorConversationId(originatorConversationId);
+    if (!payout) return;
+
+    await escrowService.refundWithdrawal({
+      payoutId: payout.id || payout.payout_id,
+      tutorId: payout.tutor_id || payout.user_id,
+      amountTokens: Number(payout.amount_tokens || payout.amount || 0),
+      reason: 'M-Pesa B2C request timed out',
+      resultPayload: body,
+      correlationId,
+    });
   });
 });

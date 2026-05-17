@@ -65,11 +65,20 @@ export interface ChartDataPoint {
   role?: string;
 }
 
+export interface PaymentChartDataPoint extends ChartDataPoint {
+  amount_kes: number;
+  tokens_expected: number;
+}
+
+export interface UserGrowthDataPoint extends ChartDataPoint {
+  role: string;
+}
+
 export interface AdminCharts {
   sessionsTimeline: ChartDataPoint[];
-  revenueTimeline: ChartDataPoint[];
-  userGrowth: ChartDataPoint[];
-  tokenPurchases: ChartDataPoint[];
+  revenueTimeline: PaymentChartDataPoint[];
+  userGrowth: UserGrowthDataPoint[];
+  tokenPurchases: PaymentChartDataPoint[];
 }
 
 export interface RecentUser {

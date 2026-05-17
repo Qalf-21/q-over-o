@@ -129,12 +129,14 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   // Reset on open
   useEffect(() => {
     if (isOpen) {
-      reset();
-      setPhoneDisplay('');
-      setPhoneError(null);
-      setCustomAmount('');
+      void Promise.resolve().then(() => {
+        reset();
+        setPhoneDisplay('');
+        setPhoneError(null);
+        setCustomAmount('');
+      });
     }
-  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, reset]);
 
   // ── Step: FORM ─────────────────────────────────────────────────────────────
   const renderForm = () => (

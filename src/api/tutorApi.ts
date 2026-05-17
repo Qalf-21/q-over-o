@@ -9,19 +9,57 @@
 import { apiRequest } from './client';
 import type { SearchFilters, Subject, TutorSearchResult } from '../types/tutor';
 
-const normalizeSubject = (subject: any): Subject => ({
-  id:       subject.id,
-  name:     subject.name,
+type RawSubject = {
+  id?: string;
+  name?: string;
+  code?: string;
+  level?: Subject['level'];
+};
+
+type RawTutor = {
+  id?: string;
+  user_id?: string;
+  name?: string;
+  firstName?: string;
+  first_name?: string;
+  lastName?: string;
+  last_name?: string;
+  avatar?: string;
+  avatar_url?: string;
+  bio?: string;
+  subjects?: RawSubject[];
+  hourlyRate?: number;
+  hourly_rate_tokens?: number;
+  listedHourlyRate?: number;
+  listed_hourly_rate?: number;
+  rating?: number;
+  rating_avg?: number;
+  totalReviews?: number;
+  total_reviews?: number;
+  totalSessions?: number;
+  total_sessions?: number;
+  isAvailable?: boolean;
+  is_available?: boolean;
+  nextAvailable?: string;
+  next_available?: string;
+  qualification?: TutorSearchResult['qualification'];
+};
+
+type AvailabilitySlot = Record<string, unknown>;
+
+const normalizeSubject = (subject: RawSubject): Subject => ({
+  id:       subject.id || '',
+  name:     subject.name || 'General',
   // `category` does not exist in the subjects table — use code as fallback
   category: subject.code || 'General',
   level:    subject.level || 'intermediate'
 });
 
-const personName = (value: any) =>
+const personName = (value: RawTutor) =>
   value.name || [value.firstName || value.first_name, value.lastName || value.last_name].filter(Boolean).join(' ');
 
-export const normalizeTutor = (tutor: any): TutorSearchResult => ({
-  id:            tutor.id || tutor.user_id,
+export const normalizeTutor = (tutor: RawTutor): TutorSearchResult => ({
+  id:            tutor.id || tutor.user_id || '',
   name:          personName(tutor) || 'Unnamed tutor',
   avatar:        tutor.avatar || tutor.avatar_url,
   bio:           tutor.bio || '',
@@ -45,7 +83,7 @@ export const tutorApi = {
     if (filters.maxPrice)     params.set('maxPrice',     String(filters.maxPrice));
     if (filters.availableNow) params.set('availableNow', 'true');
     const path = params.toString() ? `/tutors?${params}` : '/tutors';
-    const response = await apiRequest<any[]>(path, { method: 'GET' });
+    const response = await apiRequest<RawTutor[]>(path, { method: 'GET' });
     return {
       success: response.success,
       data: (response.data || []).map(normalizeTutor)
@@ -53,7 +91,7 @@ export const tutorApi = {
   },
 
   async getTutor(id: string) {
-    const response = await apiRequest<any>(`/tutors/${id}`, { method: 'GET' });
+    const response = await apiRequest<RawTutor>(`/tutors/${id}`, { method: 'GET' });
     return {
       success: response.success,
       data: normalizeTutor(response.data || {})
@@ -76,11 +114,11 @@ export const tutorApi = {
   },
 
   async getSubjects() {
-    return apiRequest<any[]>('/tutors/subjects', { method: 'GET' });
+    return apiRequest<RawSubject[]>('/tutors/subjects', { method: 'GET' });
   },
 
   async getMyAvailability() {
-    return apiRequest<any[]>('/tutors/availability', { method: 'GET' });
+    return apiRequest<AvailabilitySlot[]>('/tutors/availability', { method: 'GET' });
   },
 
   async createAvailability(slot: { dayOfWeek: number; startTime: string; endTime: string }) {

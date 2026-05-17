@@ -112,6 +112,18 @@ interface SubjectOption {
   pending?: boolean;
 }
 
+type SubjectApiItem = {
+  id?: string;
+  name?: string;
+  code?: string;
+};
+
+type TutorProfileSubjectResponse = {
+  data?: {
+    subjects?: SubjectApiItem[];
+  };
+};
+
 interface SubjectSelectorProps {
   selected: SubjectOption[];
   onChange: (subjects: SubjectOption[]) => void;
@@ -130,12 +142,12 @@ const SubjectSelector: React.FC<SubjectSelectorProps> = ({ selected, onChange })
         setIsLoadingSubjects(true);
         const res = await tutorApi.getSubjects();
         // Normalise: backend may return { data: [...] } or an array directly
-        const raw: any[] = Array.isArray(res.data)
+        const raw: SubjectApiItem[] = Array.isArray(res.data)
           ? res.data
           : Array.isArray(res)
-          ? (res as any)
+          ? (res as SubjectApiItem[])
           : [];
-        setAllSubjects(raw.map((s: any) => ({ id: s.id, name: s.name, code: s.code })));
+        setAllSubjects(raw.map((s) => ({ id: s.id || '', name: s.name || 'Subject', code: s.code })));
       } catch {
         // silently fail — subjects list stays empty
       } finally {
@@ -519,11 +531,11 @@ export const Profile: React.FC = () => {
     setIsEditingTutor(true);
 
     try {
-      const res: any = await tutorApi.getMyProfile();
-      const raw: any[] = Array.isArray(res?.data?.subjects) ? res.data.subjects : [];
+      const res = await tutorApi.getMyProfile() as TutorProfileSubjectResponse;
+      const raw: SubjectApiItem[] = Array.isArray(res?.data?.subjects) ? res.data.subjects : [];
       setTutorSettings((prev) => ({
         ...prev,
-        subjects: raw.map((s: any) => ({ id: s.id, name: s.name, code: s.code })),
+        subjects: raw.map((s) => ({ id: s.id || '', name: s.name || 'Subject', code: s.code })),
       }));
     } catch {
       // Non-fatal: tutor can still manually select subjects if pre-population fails.

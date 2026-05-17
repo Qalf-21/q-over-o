@@ -5,6 +5,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Public (no JWT):
  *   POST /api/wallet/mpesa-callback  — Safaricom callback endpoint
+ *   POST /api/wallet/b2c-result      — Safaricom B2C result endpoint
+ *   POST /api/wallet/b2c-timeout     — Safaricom B2C timeout endpoint
  *
  * Protected (JWT required):
  *   GET  /api/wallet                          → balance + recent transactions
@@ -34,6 +36,8 @@ const {
   purchaseTokens,
   getPurchaseStatus,
   handleMpesaCallback,
+  handleB2CResult,
+  handleB2CTimeout,
   getSpending,
   withdraw,
 }                         = require('../controllers/walletController');
@@ -43,6 +47,8 @@ const router = express.Router();
 // ── Public: M-Pesa callback (no JWT) ─────────────────────────────────────────
 // Rate limited to absorb Safaricom retries without allowing DoS.
 router.post('/mpesa-callback', callbackLimiter, handleMpesaCallback);
+router.post('/b2c-result', callbackLimiter, handleB2CResult);
+router.post('/b2c-timeout', callbackLimiter, handleB2CTimeout);
 
 // ── All routes below require authentication ───────────────────────────────────
 router.use(authMiddleware);

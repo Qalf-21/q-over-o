@@ -3,7 +3,7 @@ import type { ReviewSubmission } from '../types/tutor';
 
 export const reviewApi = {
   async getTutorReviews(tutorId: string) {
-    const response = await apiRequest<any[]>(`/reviews/tutor/${tutorId}`, { method: 'GET' });
+    const response = await apiRequest<unknown[]>(`/reviews/tutor/${tutorId}`, { method: 'GET' });
     return {
       success: response.success,
       data: response.data || []

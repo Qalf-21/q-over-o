@@ -54,11 +54,21 @@ const MIN_UNIQUE_REVIEWS = 20;
 const NEAR_HOURS_DELTA   = 5;   // within 5 hrs = "near qualification"
 const NEAR_REVIEWS_DELTA = 5;   // within 5 reviews
 
+const roundOne = (value) => Math.round(value * 10) / 10;
+
+const hoursBetween = (start, end) => {
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 0;
+  return (endMs - startMs) / 36e5;
+};
+
+const sessionTokenAmount = (session) =>
+  session?.token_amount ?? session?.amount_tokens ?? session?.cost_tokens ?? 0;
+
 // ── Qualification classifier for a single tutor row ──────────────────────────
-const classifyTutor = (tp) => {
-  const sessionHours   = (tp.total_session_minutes || 0) / 60;
-  const avgRating      = Number(tp.rating_avg || 0);
-  const uniqueReviewers = tp.unique_reviewer_count || 0;
+const classifyTutor = ({ sessionHours = 0, averageRating = 0, uniqueReviewers = 0 }) => {
+  const avgRating = Number(averageRating || 0);
 
   const qualifiedHours   = sessionHours   >= MIN_SESSION_HOURS;
   const qualifiedRating  = avgRating      >= MIN_RATING;
@@ -93,7 +103,7 @@ exports.getAdminOverview = asyncHandler(async (req, res) => {
     safeCount('profiles'),
     safeCount('tutor_profiles'),
     safeCount('profiles', (q) => q.eq('role', 'tutee')),
-    safeCount('sessions', (q) => q.in('status', ['pending', 'confirmed'])),
+    safeCount('sessions', (q) => q.in('status', ['pending', 'confirmed', 'in-progress'])),
     safeCount('sessions', (q) => q.eq('status', 'completed')),
     safeCount('sessions', (q) => q.eq('status', 'cancelled')),
     safeCount('profiles', (q) => q.gte('created_at', oneWeekAgo)),
@@ -119,40 +129,90 @@ exports.getAdminOverview = asyncHandler(async (req, res) => {
     ? 0
     : (tokenData || []).reduce((s, r) => s + (r.tokens_expected || 0), 0);
 
-  // ── Tokens in escrow: sum of escrow transactions minus releases ──────────
+  // ── Tokens in escrow: source of truth is currently locked escrow rows ─────
   const { data: escrowData, error: escrowError } = await supabase
-    .from('transactions')
-    .select('amount_tokens, type')
-    .in('type', ['escrow', 'escrow_release', 'refund']);
+    .from('escrow')
+    .select('amount_tokens')
+    .eq('status', 'locked');
 
-  let tokensInEscrow = 0;
-  if (!escrowError && escrowData) {
-    tokensInEscrow = escrowData.reduce((s, t) => {
-      if (t.type === 'escrow')         return s + (t.amount_tokens || 0);
-      if (t.type === 'escrow_release') return s - (t.amount_tokens || 0);
-      if (t.type === 'refund')         return s - (t.amount_tokens || 0);
-      return s;
-    }, 0);
-    tokensInEscrow = Math.max(0, tokensInEscrow);
-  }
+  const tokensInEscrow = escrowError
+    ? 0
+    : (escrowData || []).reduce((sum, escrow) => sum + (escrow.amount_tokens || 0), 0);
 
   // ── Active tutors (is_available = true) ───────────────────────────────────
   const activeTutors = await safeCount('tutor_profiles', (q) => q.eq('is_available', true));
 
-  // ── Qualification stats: need per-tutor data ──────────────────────────────
+  // ── Qualification stats: canonical data from completed sessions + reviews ─
   const { data: tutorProfiles, error: tpError } = await supabase
     .from('tutor_profiles')
-    .select('user_id, rating_avg, total_reviews, total_session_minutes, unique_reviewer_count');
+    .select('user_id');
+
+  const tutorIds = (tutorProfiles || []).map((tp) => tp.user_id).filter(Boolean);
+
+  const [
+    { data: completedTutorSessions, error: qualificationSessionsError },
+    { data: tutorReviews, error: qualificationReviewsError },
+  ] = tutorIds.length
+    ? await Promise.all([
+        supabase
+          .from('sessions')
+          .select('tutor_id, start_time, end_time')
+          .in('tutor_id', tutorIds)
+          .eq('status', 'completed'),
+        supabase
+          .from('reviews')
+          .select('tutor_id, reviewer_id, rating')
+          .in('tutor_id', tutorIds)
+          .eq('reviewee_role', 'tutor')
+          .is('deleted_at', null),
+      ])
+    : [
+        { data: [], error: null },
+        { data: [], error: null },
+      ];
+
+  if (tpError || qualificationSessionsError || qualificationReviewsError) {
+    throw new AppError('Failed to calculate tutor qualification metrics', 500);
+  }
+
+  const qualificationByTutor = new Map();
+  tutorIds.forEach((tutorId) => {
+    qualificationByTutor.set(tutorId, {
+      tutorId,
+      sessionHours: 0,
+      ratings: [],
+      reviewers: new Set(),
+    });
+  });
+
+  (completedTutorSessions || []).forEach((session) => {
+    const entry = qualificationByTutor.get(session.tutor_id);
+    if (!entry) return;
+    entry.sessionHours += hoursBetween(session.start_time, session.end_time);
+  });
+
+  (tutorReviews || []).forEach((review) => {
+    const entry = qualificationByTutor.get(review.tutor_id);
+    const rating = Number(review.rating);
+    if (!entry || !review.reviewer_id || !Number.isFinite(rating) || rating < 1 || rating > 5) return;
+    entry.ratings.push(rating);
+    entry.reviewers.add(review.reviewer_id);
+  });
 
   let qualifiedTutors = 0;
   let tutorsNearQualification = 0;
 
-  if (!tpError && tutorProfiles) {
-    for (const tp of tutorProfiles) {
-      const { qualified, nearQualification } = classifyTutor(tp);
-      if (qualified)          qualifiedTutors++;
-      if (nearQualification)  tutorsNearQualification++;
-    }
+  for (const entry of qualificationByTutor.values()) {
+    const averageRating = entry.ratings.length
+      ? entry.ratings.reduce((sum, rating) => sum + rating, 0) / entry.ratings.length
+      : 0;
+    const { qualified, nearQualification } = classifyTutor({
+      sessionHours: entry.sessionHours,
+      averageRating,
+      uniqueReviewers: entry.reviewers.size,
+    });
+    if (qualified) qualifiedTutors++;
+    if (nearQualification) tutorsNearQualification++;
   }
 
   // ── Chart data: sessions over time (last 30 days, daily) ─────────────────
@@ -229,12 +289,18 @@ exports.getAdminOverview = asyncHandler(async (req, res) => {
     .limit(10);
 
   // ── Qualification detail list (for a tutor progress table) ───────────────
-  const qualificationList = (tutorProfiles || []).map((tp) => {
-    const sessionHours    = (tp.total_session_minutes || 0) / 60;
-    const avgRating       = Number(tp.rating_avg || 0);
-    const uniqueReviewers = tp.unique_reviewer_count || 0;
+  const qualificationList = Array.from(qualificationByTutor.values()).map((entry) => {
+    const sessionHours    = entry.sessionHours;
+    const avgRating       = entry.ratings.length
+      ? entry.ratings.reduce((sum, rating) => sum + rating, 0) / entry.ratings.length
+      : 0;
+    const uniqueReviewers = entry.reviewers.size;
 
-    const { qualified, nearQualification } = classifyTutor(tp);
+    const { qualified, nearQualification } = classifyTutor({
+      sessionHours,
+      averageRating: avgRating,
+      uniqueReviewers,
+    });
 
     const hoursRemaining   = Math.max(0, MIN_SESSION_HOURS  - sessionHours);
     const reviewsRemaining = Math.max(0, MIN_UNIQUE_REVIEWS - uniqueReviewers);
@@ -247,21 +313,22 @@ exports.getAdminOverview = asyncHandler(async (req, res) => {
     const progress   = Math.round((pctHours + pctReviews + pctRating) / 3);
 
     return {
-      tutorId: tp.user_id,
-      sessionHours: Math.round(sessionHours * 10) / 10,
-      averageRating: Math.round(avgRating * 10) / 10,
+      tutorId: entry.tutorId,
+      sessionHours: roundOne(sessionHours),
+      averageRating: roundOne(avgRating),
       uniqueReviewers,
       qualified,
       nearQualification,
-      hoursRemaining: Math.round(hoursRemaining * 10) / 10,
+      hoursRemaining: roundOne(hoursRemaining),
       reviewsRemaining,
       ratingOk,
       progress,
     };
   });
 
-  // ── Log admin action ──────────────────────────────────────────────────────
-  await logAdminAction(req, 'admin.overview.view', 'dashboard');
+  if (req.query.audit === 'true') {
+    await logAdminAction(req, 'admin.overview.view', 'dashboard');
+  }
 
   res.json({
     success: true,

@@ -23,8 +23,8 @@ export const BecomeTutorModal: React.FC<BecomeTutorModalProps> = ({
     try {
       await onConfirm();
       onClose();
-    } catch (err: any) {
-      setError(err?.message || 'Something went wrong. Please try again.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
     }

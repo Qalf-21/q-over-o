@@ -29,6 +29,18 @@ interface AvailabilitySlot {
   slotMinutes: number;  // duration of the full slot
 }
 
+type RawAvailabilitySlot = {
+  id?: string;
+  start_time?: string;
+  startTime?: string;
+  end_time?: string;
+  endTime?: string;
+};
+
+type AvailabilityResponse = {
+  data?: RawAvailabilitySlot[] | { slots?: RawAvailabilitySlot[] };
+};
+
 interface BookingModalProps {
   tutor: TutorSearchResult | null;
   currentUserId?: string;            // ← used to block self-booking
@@ -145,15 +157,18 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     tutorApi.getAvailability(tutorId)
       .then(res => {
         if (cancelled) return;
-        const raw: any[] = (res as any)?.data?.slots ?? (res as any)?.data ?? [];
+        const response = res as AvailabilityResponse;
+        const raw = Array.isArray(response.data)
+          ? response.data
+          : response.data?.slots ?? [];
         const now = new Date();
         const normalized: AvailabilitySlot[] = raw
-          .filter(s => parseUtcDate(s.end_time ?? s.endTime) > now)
+          .filter(s => parseUtcDate(s.end_time ?? s.endTime ?? '') > now)
           .map(s => {
-            const start = currentBookableStart(s.start_time ?? s.startTime, now).toISOString();
-            const end = s.end_time ?? s.endTime;
+            const start = currentBookableStart(s.start_time ?? s.startTime ?? '', now).toISOString();
+            const end = s.end_time ?? s.endTime ?? '';
             return {
-              id: s.id,
+              id: s.id || '',
               start_time: start,
               end_time:   end,
               slotMinutes: minutesBetween(start, end),
@@ -177,7 +192,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     } else {
       setSelectedSubjectId('');
     }
-  }, [tutor?.id]);
+  }, [tutor?.subjects]);
 
   // Reset start and duration when the selected slot changes.
   useEffect(() => {
@@ -186,7 +201,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     const options = durationOptionsFor(selectedSlot, nextStart);
     setSessionStart(nextStart);
     setDuration(options[0] ?? MIN_SESSION_MINUTES);
-  }, [selectedSlot?.id]);
+  }, [selectedSlot]);
 
   useEffect(() => {
     if (!selectedSlot || !sessionStart) return;
@@ -275,8 +290,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         notes:       topic,
       });
       setStep('success');
-    } catch (err: any) {
-      setBookingError(err?.response?.data?.message ?? err?.message ?? 'Booking failed. Please try again.');
+    } catch (err) {
+      const maybeApiError = err as { response?: { data?: { message?: string } }; message?: string };
+      setBookingError(maybeApiError.response?.data?.message ?? maybeApiError.message ?? 'Booking failed. Please try again.');
     } finally {
       setIsProcessing(false);
     }

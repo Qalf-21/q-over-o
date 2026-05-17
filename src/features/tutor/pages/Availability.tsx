@@ -48,25 +48,53 @@ const localDateTime = (date: string, time: string) => {
   return value;
 };
 
-const normalizeSlot = (slot: any): TimeSlot => {
+type AvailabilityTimeSlot = TimeSlot & {
+  _startISO?: string;
+  _endISO?: string;
+  _date?: string;
+};
+
+type RawAvailabilitySlot = {
+  id?: string;
+  dayOfWeek?: number;
+  day_of_week?: number;
+  start_time?: string;
+  startTime?: string;
+  end_time?: string;
+  endTime?: string;
+  is_available?: boolean;
+  isAvailable?: boolean;
+};
+
+type TutorProfileAvailability = {
+  isAvailable?: boolean;
+  is_available?: boolean;
+};
+
+type ApiErrorLike = {
+  response?: { data?: { message?: string } };
+  message?: string;
+};
+
+const normalizeSlot = (slot: RawAvailabilitySlot): AvailabilityTimeSlot => {
   const startRaw = slot.start_time ?? slot.startTime;
   const endRaw   = slot.end_time   ?? slot.endTime;
   if (startRaw && startRaw.includes('T')) {
     const start = parseUtcDate(startRaw);
     return {
-      id:          slot.id,
+      id:          slot.id || '',
       dayOfWeek:   start.getDay(),
       startTime:   toHHMM(startRaw),
-      endTime:     toHHMM(endRaw),
+      endTime:     endRaw ? toHHMM(endRaw) : '',
       isAvailable: slot.is_available ?? slot.isAvailable ?? true,
       // Keep the raw ISO so we can check expiry
       _startISO:   startRaw,
       _endISO:     endRaw,
       _date:       localDateKey(startRaw),
-    } as any;
+    };
   }
   return {
-    id:          slot.id,
+    id:          slot.id || '',
     dayOfWeek:   slot.dayOfWeek ?? slot.day_of_week ?? 0,
     startTime:   startRaw ?? '',
     endTime:     endRaw   ?? '',
@@ -75,7 +103,7 @@ const normalizeSlot = (slot: any): TimeSlot => {
 };
 
 /** Filter out slots whose end time has already passed */
-const filterExpired = (slots: any[]): any[] => {
+const filterExpired = (slots: AvailabilityTimeSlot[]): AvailabilityTimeSlot[] => {
   const now = new Date();
   return slots.filter(s => {
     const endISO = s._endISO ?? null;
@@ -95,7 +123,7 @@ const todayLocal = () => {
 interface AddSlotModalProps {
   onClose: () => void;
   onSave: (slot: { dayOfWeek: number; startTime: string; durationHours: number; date: string }) => Promise<void>;
-  existingSlots: any[];
+  existingSlots: AvailabilityTimeSlot[];
   saving: boolean;
 }
 
@@ -139,8 +167,8 @@ const AddSlotModal: React.FC<AddSlotModalProps> = ({ onClose, onSave, existingSl
     setModalError(null);
     try {
       await onSave({ dayOfWeek, startTime, durationHours, date: selectedDate });
-    } catch (err: any) {
-      setModalError(err?.message ?? 'Failed to save the time slot. Please try again.');
+    } catch (err) {
+      setModalError(err instanceof Error ? err.message : 'Failed to save the time slot. Please try again.');
     }
   };
 
@@ -311,7 +339,7 @@ const AddSlotModal: React.FC<AddSlotModalProps> = ({ onClose, onSave, existingSl
 // ── Availability page ─────────────────────────────────────────────────────────
 
 export const Availability: React.FC = () => {
-  const [slots,       setSlots]       = useState<any[]>([]);
+  const [slots,       setSlots]       = useState<AvailabilityTimeSlot[]>([]);
   const [isAvailable, setIsAvailable] = useState(true);
   const [showModal,   setShowModal]   = useState(false);
   const [loading,     setLoading]     = useState(true);
@@ -329,14 +357,14 @@ export const Availability: React.FC = () => {
     if (profileResult.status === 'fulfilled') {
       const res = profileResult.value;
       if (res.success && res.data) {
-        const p = res.data as any;
+        const p = res.data as TutorProfileAvailability;
         setIsAvailable(p.isAvailable ?? p.is_available ?? true);
       }
     }
     if (slotsResult.status === 'fulfilled') {
       const res = slotsResult.value;
       if (res.success) {
-        const normalized = (res.data as any[] ?? []).map(normalizeSlot);
+        const normalized = ((res.data as RawAvailabilitySlot[] | undefined) ?? []).map(normalizeSlot);
         // Remove slots whose end time has already passed
         setSlots(filterExpired(normalized));
       }
@@ -398,7 +426,7 @@ export const Availability: React.FC = () => {
         setSlots(prev => filterExpired([...prev, normalized]));
       } else {
         // Optimistic fallback
-        const fallback: any = {
+        const fallback: AvailabilityTimeSlot = {
           id:        Date.now().toString(),
           dayOfWeek: newSlot.dayOfWeek,
           startTime: newSlot.startTime,
@@ -410,9 +438,10 @@ export const Availability: React.FC = () => {
         setSlots(prev => filterExpired([...prev, fallback]));
       }
       setShowModal(false);
-    } catch (err: any) {
+    } catch (err) {
+      const maybeApiError = err as ApiErrorLike;
       throw new Error(
-        err?.response?.data?.message ?? err?.message ?? 'Failed to save the time slot. Please try again.'
+        maybeApiError.response?.data?.message ?? maybeApiError.message ?? 'Failed to save the time slot. Please try again.'
       );
     } finally {
       setSaving(false);
@@ -434,7 +463,7 @@ export const Availability: React.FC = () => {
 
   // Group by actual date (YYYY-MM-DD) rather than day-of-week,
   // sorted chronologically so today's slots appear first
-  const slotsByDate = slots.reduce<Record<string, any[]>>((acc, s) => {
+  const slotsByDate = slots.reduce<Record<string, AvailabilityTimeSlot[]>>((acc, s) => {
     const key = s._date ?? 'unknown';
     if (!acc[key]) acc[key] = [];
     acc[key].push(s);

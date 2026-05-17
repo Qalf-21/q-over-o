@@ -13,6 +13,11 @@ interface SubjectOption {
   name: string;
 }
 
+type SubjectResponse = {
+  id?: string;
+  name?: string;
+};
+
 interface SearchFiltersProps {
   filters: Filters;
   onChange: (filters: Filters) => void;
@@ -27,12 +32,12 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({ filters, onChange,
     tutorApi.getSubjects()
       .then((res) => {
         // Normalise: backend returns { success, data: [...] }
-        const raw: any[] = Array.isArray(res.data)
+        const raw: SubjectResponse[] = Array.isArray(res.data)
           ? res.data
           : Array.isArray(res)
-          ? (res as any)
+          ? (res as SubjectResponse[])
           : [];
-        setSubjects(raw.map((s: any) => ({ id: s.id, name: s.name })));
+        setSubjects(raw.map((s) => ({ id: s.id || '', name: s.name || 'General' })));
       })
       .catch(() => {
         // Silently fail — dropdown will only show "All Subjects"

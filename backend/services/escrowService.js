@@ -200,6 +200,188 @@ class EscrowService {
 
     return data;
   }
+
+  async markWithdrawalProcessing({
+    payoutId,
+    originatorConversationId,
+    conversationId,
+    correlationId,
+  }) {
+    if (!payoutId) return;
+
+    const { error } = await supabase
+      .from('payouts')
+      .update({
+        status: 'processing',
+        originator_conversation_id: originatorConversationId,
+        conversation_id: conversationId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', payoutId);
+
+    if (error) {
+      logger.warn(
+        { event: 'withdrawal_processing_update_failed', payoutId, error, correlationId },
+        'Could not update payout with Daraja B2C tracking fields',
+      );
+    }
+  }
+
+  async findWithdrawalByOriginatorConversationId(originatorConversationId) {
+    if (!originatorConversationId) return null;
+
+    const { data, error } = await supabase
+      .from('payouts')
+      .select('*')
+      .eq('originator_conversation_id', originatorConversationId)
+      .maybeSingle();
+
+    if (error) {
+      logger.warn(
+        { event: 'withdrawal_lookup_failed', originatorConversationId, error },
+        'Could not look up payout by OriginatorConversationID',
+      );
+      return null;
+    }
+
+    return data;
+  }
+
+  async markWithdrawalSucceeded({
+    payoutId,
+    transactionId,
+    resultPayload,
+    correlationId,
+  }) {
+    if (!payoutId) return;
+
+    const { error } = await supabase
+      .from('payouts')
+      .update({
+        status: 'completed',
+        mpesa_receipt_number: transactionId,
+        result_payload: resultPayload,
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', payoutId);
+
+    if (error) {
+      logger.warn(
+        { event: 'withdrawal_success_update_failed', payoutId, error, correlationId },
+        'Could not mark payout completed',
+      );
+    }
+  }
+
+  async refundWithdrawal({
+    payoutId,
+    tutorId,
+    amountTokens,
+    reason,
+    resultPayload = null,
+    correlationId,
+  }) {
+    if (!tutorId || !Number.isInteger(amountTokens) || amountTokens < 1) {
+      logger.error(
+        { event: 'withdrawal_refund_invalid_args', payoutId, tutorId, amountTokens, correlationId },
+        'Cannot refund withdrawal with invalid arguments',
+      );
+      return;
+    }
+
+    const refundReference = `withdrawal_refund:${payoutId || correlationId}`;
+    const { data: existingRefund } = await supabase
+      .from('transactions')
+      .select('id')
+      .eq('user_id', tutorId)
+      .eq('reference', refundReference)
+      .maybeSingle();
+
+    if (existingRefund) {
+      logger.info(
+        { event: 'withdrawal_refund_duplicate_skipped', payoutId, tutorId, correlationId },
+        'Withdrawal refund already recorded',
+      );
+      return;
+    }
+
+    const { data: wallet, error: walletError } = await supabase
+      .from('wallets')
+      .select('balance_tokens')
+      .eq('user_id', tutorId)
+      .maybeSingle();
+
+    if (walletError || !wallet) {
+      logger.error(
+        { event: 'withdrawal_refund_wallet_missing', payoutId, tutorId, walletError, correlationId },
+        'Could not refund withdrawal because wallet was not found',
+      );
+      return;
+    }
+
+    const newBalance = (wallet.balance_tokens || 0) + amountTokens;
+    const { error: updateError } = await supabase
+      .from('wallets')
+      .update({ balance_tokens: newBalance, updated_at: new Date().toISOString() })
+      .eq('user_id', tutorId);
+
+    if (updateError) {
+      logger.error(
+        { event: 'withdrawal_refund_wallet_update_failed', payoutId, tutorId, updateError, correlationId },
+        'Could not refund withdrawal wallet balance',
+      );
+      return;
+    }
+
+    const { error: transactionError } = await supabase
+      .from('transactions')
+      .insert({
+        user_id: tutorId,
+        type: 'refund',
+        amount_tokens: amountTokens,
+        balance_after: newBalance,
+        status: 'success',
+        reference: refundReference,
+        description: `Withdrawal refund: ${reason}`,
+        created_at: new Date().toISOString(),
+      });
+
+    if (transactionError) {
+      logger.warn(
+        { event: 'withdrawal_refund_transaction_failed', payoutId, tutorId, transactionError, correlationId },
+        'Wallet was refunded but refund transaction logging failed',
+      );
+    }
+
+    if (payoutId) {
+      const { error: payoutError } = await supabase
+        .from('payouts')
+        .update({
+          status: 'failed',
+          failure_reason: reason,
+          result_payload: resultPayload,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', payoutId);
+
+      if (payoutError) {
+        logger.warn(
+          { event: 'withdrawal_failure_update_failed', payoutId, payoutError, correlationId },
+          'Could not mark failed payout after refund',
+        );
+      }
+    }
+
+    auditWallet({
+      event: 'withdrawal_refunded',
+      tutorId,
+      amountTokens,
+      payoutId,
+      reason,
+      correlationId,
+    });
+  }
 }
 
 module.exports = new EscrowService();

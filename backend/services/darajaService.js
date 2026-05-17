@@ -180,6 +180,90 @@ async function initiateSTKPush({ phone, amountKes, accountReference, description
   };
 }
 
+// ── B2C Payout ───────────────────────────────────────────────────────────────
+
+/**
+ * Initiate an M-Pesa B2C payout to a tutor.
+ *
+ * Daraja B2C is asynchronous: a successful response only means Safaricom
+ * accepted the request. The final result is posted to ResultURL.
+ */
+async function initiateB2CPayment({
+  phone,
+  amountKes,
+  remarks,
+  occasion,
+  correlationId,
+}) {
+  const shortcode = process.env.MPESA_B2C_SHORTCODE || process.env.MPESA_SHORTCODE;
+  const initiatorName = process.env.MPESA_B2C_INITIATOR_NAME;
+  const securityCredential = process.env.MPESA_B2C_SECURITY_CREDENTIAL;
+  const resultUrl = process.env.MPESA_B2C_RESULT_URL;
+  const queueTimeoutUrl = process.env.MPESA_B2C_TIMEOUT_URL;
+  const commandId = process.env.MPESA_B2C_COMMAND_ID || 'BusinessPayment';
+
+  if (!shortcode || !initiatorName || !securityCredential || !resultUrl || !queueTimeoutUrl) {
+    throw new AppError(
+      'M-Pesa B2C is not configured. Set MPESA_B2C_SHORTCODE, MPESA_B2C_INITIATOR_NAME, MPESA_B2C_SECURITY_CREDENTIAL, MPESA_B2C_RESULT_URL, and MPESA_B2C_TIMEOUT_URL.',
+      500,
+      'MPESA_B2C_CONFIG_ERROR',
+    );
+  }
+
+  if (!Number.isInteger(amountKes) || amountKes < 1) {
+    throw new AppError('B2C amount must be a positive integer (KES)', 400, 'INVALID_AMOUNT');
+  }
+
+  const payload = {
+    InitiatorName: initiatorName,
+    SecurityCredential: securityCredential,
+    CommandID: commandId,
+    Amount: amountKes,
+    PartyA: shortcode,
+    PartyB: phone,
+    Remarks: String(remarks || 'Tutor withdrawal').slice(0, 100),
+    QueueTimeOutURL: queueTimeoutUrl,
+    ResultURL: resultUrl,
+    Occasion: String(occasion || 'Q-over-o withdrawal').slice(0, 100),
+  };
+
+  auditPayment({
+    event: 'b2c_payout_initiated',
+    correlationId,
+    amountKes,
+    commandId,
+    phone: phone.replace(/(\d{3})\d{6}(\d{3})/, '$1******$2'),
+  });
+
+  const data = await darajaPost('/mpesa/b2c/v1/paymentrequest', payload, correlationId);
+  const responseCode = String(data.ResponseCode ?? data.errorCode ?? '');
+
+  if (responseCode !== '0') {
+    logger.error(
+      { event: 'b2c_payout_rejected', data, correlationId },
+      'Safaricom rejected B2C payout',
+    );
+    throw new AppError(
+      `B2C payout rejected: ${data.ResponseDescription || data.errorMessage || 'Unknown reason'}`,
+      502,
+      'B2C_PAYOUT_REJECTED',
+    );
+  }
+
+  auditPayment({
+    event: 'b2c_payout_accepted',
+    correlationId,
+    originatorConversationId: data.OriginatorConversationID,
+    conversationId: data.ConversationID,
+  });
+
+  return {
+    originatorConversationId: data.OriginatorConversationID,
+    conversationId: data.ConversationID,
+    responseDescription: data.ResponseDescription,
+  };
+}
+
 // ── STK Query (status verification) ──────────────────────────────────────────
 
 /**
@@ -243,4 +327,10 @@ async function queryStkStatus(checkoutRequestId, correlationId) {
   return { resultCode, resultDesc, status };
 }
 
-module.exports = { initiateSTKPush, queryStkStatus, generateTimestamp, generateStkPassword };
+module.exports = {
+  initiateSTKPush,
+  initiateB2CPayment,
+  queryStkStatus,
+  generateTimestamp,
+  generateStkPassword,
+};

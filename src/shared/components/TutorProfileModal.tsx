@@ -51,7 +51,29 @@ const StarRating: React.FC<{ rating: number; size?: 'sm' | 'md' }> = ({
   );
 };
 
-const personName = (p: any) =>
+type PersonName = {
+  first_name?: string;
+  last_name?: string;
+};
+
+type ReviewItem = {
+  id?: string;
+  rating?: number;
+  comment?: string;
+  created_at?: string;
+  reviewer?: PersonName;
+  profiles?: PersonName;
+};
+
+type ModalTutor = TutorSearchResult & {
+  isVerified?: boolean;
+};
+
+type ModalSubject = TutorSearchResult['subjects'][number] & {
+  code?: string;
+};
+
+const personName = (p?: PersonName) =>
   [p?.first_name, p?.last_name].filter(Boolean).join(' ') || 'Student';
 
 const formatRelative = (iso: string) => {
@@ -85,8 +107,8 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
 }) => {
   const overlayRef = useRef<HTMLDivElement>(null);
 
-  const [tutor, setTutor] = useState<TutorSearchResult | null>(null);
-  const [reviews, setReviews] = useState<any[]>([]);
+  const [tutor, setTutor] = useState<ModalTutor | null>(null);
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -105,8 +127,8 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
         tutorApi.getTutor(tutorId),
         reviewApi.getTutorReviews(tutorId),
       ]);
-      setTutor(tutorRes.data);
-      setReviews(reviewRes.data ?? []);
+      setTutor(tutorRes.data as ModalTutor);
+      setReviews((reviewRes.data ?? []) as ReviewItem[]);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load profile');
     } finally {
@@ -194,7 +216,7 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start flex-wrap gap-2">
                       <h2 className="text-xl font-bold text-gray-900">{tutor.name}</h2>
-                      {(tutor as any).isVerified && (
+                      {tutor.isVerified && (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
                           <CheckCircle className="w-3 h-3" />
                           Verified
@@ -282,18 +304,21 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
                       Subjects Taught
                     </h3>
                     <div className="flex flex-wrap gap-2">
-                      {tutor.subjects.map((s) => (
+                      {tutor.subjects.map((subject) => {
+                        const s = subject as ModalSubject;
+                        return (
                         <div
                           key={s.id}
                           className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 rounded-xl border border-indigo-100"
                         >
                           <Award className="w-3.5 h-3.5" />
                           <span className="text-sm font-medium">{s.name}</span>
-                          {(s as any).code && (
-                            <span className="text-indigo-400 text-xs">{(s as any).code}</span>
+                          {s.code && (
+                            <span className="text-indigo-400 text-xs">{s.code}</span>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -315,18 +340,18 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
                           className="flex gap-3 pb-3 border-b border-gray-50 last:border-0 last:pb-0"
                         >
                           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-300 to-purple-400 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
-                            {personName(review.profiles)[0]}
+                            {personName(review.profiles ?? review.reviewer)[0]}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2 flex-wrap">
                               <p className="text-sm font-semibold text-gray-900">
-                                {personName(review.profiles)}
+                                {personName(review.profiles ?? review.reviewer)}
                               </p>
                               <span className="text-xs text-gray-400">
-                                {formatRelative(review.created_at)}
+                                {review.created_at ? formatRelative(review.created_at) : ''}
                               </span>
                             </div>
-                            <StarRating rating={review.rating} size="sm" />
+                            <StarRating rating={review.rating ?? 0} size="sm" />
                             {review.comment && (
                               <p className="text-xs text-gray-600 mt-1 leading-relaxed">
                                 {review.comment}
