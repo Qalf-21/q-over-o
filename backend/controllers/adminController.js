@@ -438,7 +438,7 @@ exports.getAdminOverview = asyncHandler(async (req, res) => {
   const { data: recentSessions } = await supabase
     .from('sessions')
     .select(`
-      id, status, start_time, end_time, token_amount, amount_tokens, cost_tokens, created_at,
+      id, status, start_time, end_time, cost_tokens, created_at,
       tutor:tutor_id ( first_name, last_name ),
       tutee:tutee_id ( first_name, last_name )
     `)
@@ -637,7 +637,7 @@ exports.getReports = asyncHandler(async (req, res) => {
   } else if (['session_completion', 'cancellations', 'subject_popularity'].includes(type)) {
     let query = sessionDate(supabase
       .from('sessions')
-      .select('id, tutor_id, tutee_id, subject_id, status, start_time, end_time, token_amount, amount_tokens, cost_tokens, tutor:tutor_id(first_name, last_name, email), tutee:tutee_id(first_name, last_name, email), subjects:subject_id(name, code)'));
+      .select('id, tutor_id, tutee_id, subject_id, status, start_time, end_time, cost_tokens, tutor:tutor_id(first_name, last_name, email), tutee:tutee_id(first_name, last_name, email), subjects:subject_id(name, code)'));
     if (req.query.tutor) query = query.eq('tutor_id', String(req.query.tutor));
     if (req.query.student) query = query.eq('tutee_id', String(req.query.student));
     if (req.query.subject) query = query.eq('subject_id', String(req.query.subject));
@@ -1057,7 +1057,7 @@ exports.getSessions = asyncHandler(async (req, res) => {
     .from('sessions')
     .select(`
       id, tutor_id, tutee_id, subject_id, status, start_time, end_time,
-      token_amount, amount_tokens, cost_tokens, created_at,
+      cost_tokens, created_at,
       tutor:tutor_id(first_name, last_name, email),
       tutee:tutee_id(first_name, last_name, email),
       subjects:subject_id(id, name, code)

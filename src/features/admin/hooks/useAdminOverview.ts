@@ -11,7 +11,8 @@ import { useAutoRefresh } from '../../../shared/hooks/useAutoRefresh';
 // ── Chart bucket helpers ──────────────────────────────────────────────────────
 
 function toYMD(iso: string) {
-  return iso.slice(0, 10); // "YYYY-MM-DD"
+  const date = new Date(iso);
+  return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : '';
 }
 
 function last30Days(): string[] {
@@ -40,7 +41,7 @@ function buildDailyPoints(
   days.forEach((d) => byDay.set(d, []));
   items.forEach((item) => {
     const day = toYMD(item.created_at);
-    if (byDay.has(day)) byDay.get(day)!.push(item);
+    if (day && byDay.has(day)) byDay.get(day)!.push(item);
   });
   return days.map((day) => {
     const pts = byDay.get(day)!;

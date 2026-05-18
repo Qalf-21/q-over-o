@@ -1,12 +1,12 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   Activity,
   Bell,
   ClipboardList,
   FileWarning,
-  BarChart3,
   LayoutDashboard,
+  LogOut,
   MessageSquare,
   Settings,
   Shield,
@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { useLogoNavigation } from '../../../shared/hooks/useLogoNavigation';
+import { useAuth } from '../../../shared/hooks/useAuth';
 
 interface AdminSidebarProps {
   onClose: () => void;
@@ -29,7 +30,6 @@ const navItems = [
   { path: '/dashboard/admin/wallets', icon: Wallet, label: 'Wallets' },
   { path: '/dashboard/admin/reviews', icon: MessageSquare, label: 'Reviews' },
   { path: '/dashboard/admin/subject-requests', icon: Tags, label: 'Subject Requests' },
-  { path: '/dashboard/admin/reports/analytics', icon: BarChart3, label: 'Analytics Dashboard' },
   { path: '/dashboard/admin/reports/financial', icon: Wallet, label: 'Financial Reports' },
   { path: '/dashboard/admin/reports/sessions', icon: Activity, label: 'Session Reports' },
   { path: '/dashboard/admin/reports/users', icon: Users, label: 'User Reports' },
@@ -42,6 +42,13 @@ const navItems = [
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({ onClose }) => {
   const logoDestination = useLogoNavigation();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+  const handleSignOut = () => {
+    logout();
+    navigate('/login', { replace: true });
+    onClose();
+  };
 
   return (
   <aside className="flex h-full flex-col border-r border-white/10 bg-slate-950/95 text-white backdrop-blur-xl">
@@ -87,6 +94,16 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ onClose }) => {
         </NavLink>
       ))}
     </nav>
+    <div className="border-t border-white/10 p-4">
+      <button
+        type="button"
+        onClick={handleSignOut}
+        className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-slate-300 transition-colors hover:bg-red-500/10 hover:text-red-200"
+      >
+        <LogOut className="h-5 w-5" />
+        Sign out
+      </button>
+    </div>
   </aside>
   );
 };

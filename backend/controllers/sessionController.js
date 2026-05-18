@@ -106,9 +106,12 @@ const createFreeSession = async ({ tuteeId, tutorId, subjectId, startTime, endTi
   };
 
   const payloads = [
-    { ...basePayload, token_amount: 0 },
-    { ...basePayload, amount_tokens: 0 },
+    { ...basePayload, cost_tokens: 0, payment_status: 'completed' },
     { ...basePayload, cost_tokens: 0 },
+    { ...basePayload, token_amount: 0, payment_status: 'completed' },
+    { ...basePayload, token_amount: 0 },
+    { ...basePayload, amount_tokens: 0, payment_status: 'completed' },
+    { ...basePayload, amount_tokens: 0 },
     basePayload,
   ];
 

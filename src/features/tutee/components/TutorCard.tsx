@@ -25,7 +25,7 @@ export const TutorCard: React.FC<TutorCardProps> = ({ tutor, onViewProfile, onBo
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -4 }}
-      className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-lg transition-all"
+      className="app-card app-card-hover p-6"
     >
       <div className="flex items-start gap-4 mb-4">
         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-400 to-purple-400 flex items-center justify-center text-white text-xl font-bold flex-shrink-0">
@@ -38,12 +38,12 @@ export const TutorCard: React.FC<TutorCardProps> = ({ tutor, onViewProfile, onBo
 
             {/* Always show availability status — not just when available */}
             {tutor.isAvailable ? (
-              <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full flex-shrink-0">
+              <span className="app-badge flex-shrink-0 bg-emerald-50 text-emerald-700">
                 <CheckCircle2 className="w-3 h-3" />
                 Available
               </span>
             ) : (
-              <span className="flex items-center gap-1 text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full flex-shrink-0">
+              <span className="app-badge flex-shrink-0 bg-slate-100 text-slate-500">
                 <XCircle className="w-3 h-3" />
                 Unavailable
               </span>
@@ -58,7 +58,7 @@ export const TutorCard: React.FC<TutorCardProps> = ({ tutor, onViewProfile, onBo
 
           <div className="flex flex-wrap gap-1">
             {tutor.subjects.slice(0, 2).map(subject => (
-              <span key={subject.id} className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md">
+              <span key={subject.id} className="rounded-lg bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700">
                 {subject.name}
               </span>
             ))}
@@ -90,7 +90,7 @@ export const TutorCard: React.FC<TutorCardProps> = ({ tutor, onViewProfile, onBo
         <div className="flex gap-2">
           <button
             onClick={() => onViewProfile(tutor)}
-            className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg hover:border-indigo-600 hover:text-indigo-600 transition-colors"
+            className="app-button-secondary px-4 py-2"
           >
             View Profile
           </button>
@@ -98,10 +98,10 @@ export const TutorCard: React.FC<TutorCardProps> = ({ tutor, onViewProfile, onBo
             onClick={() => tutor.isAvailable && onBook(tutor)}
             disabled={!tutor.isAvailable}
             title={!tutor.isAvailable ? 'This tutor is currently unavailable' : undefined}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+            className={`inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
               tutor.isAvailable
-                ? 'text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:shadow-md cursor-pointer'
-                : 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-sm hover:from-indigo-700 hover:to-purple-700 hover:shadow-md'
+                : 'cursor-not-allowed bg-slate-100 text-slate-400'
             }`}
           >
             Book Now

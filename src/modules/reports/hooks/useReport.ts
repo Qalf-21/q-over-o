@@ -3,6 +3,7 @@ import { DEFAULT_REPORT_FILTERS, DEFAULT_SORT } from '../core/report.filters';
 import { reportService } from '../core/report.service';
 import type { ExportFormat, ReportColumn, ReportData, ReportFilter, ReportRow, ReportType, SortConfig } from '../core/report.types';
 import { exportReport as exportReportFile } from '../export/export.service';
+import { useAuth } from '../../../shared/hooks/useAuth';
 
 interface UseReportOptions<T extends ReportRow> {
   type: ReportType;
@@ -23,6 +24,7 @@ export const useReport = <T extends ReportRow>({
   initialSort = DEFAULT_SORT,
   pageSize: initialPageSize = 20,
 }: UseReportOptions<T>) => {
+  const { user } = useAuth();
   const [filters, setFilters] = useState<ReportFilter>(initialFilters);
   const [draftFilters, setDraftFilters] = useState<ReportFilter>(initialFilters);
   const [sort, setSort] = useState<SortConfig>(initialSort);
@@ -74,8 +76,9 @@ export const useReport = <T extends ReportRow>({
 
   const exportReport = useCallback((format: ExportFormat) => {
     if (!data) return;
-    exportReportFile(title, format, data, columns, role);
-  }, [columns, data, role, title]);
+    const generatedBy = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'Unknown user';
+    exportReportFile(title, format, data, columns, role, generatedBy);
+  }, [columns, data, role, title, user?.email, user?.firstName, user?.lastName]);
 
   return useMemo(() => ({
     data,

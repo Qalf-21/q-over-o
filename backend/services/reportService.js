@@ -12,11 +12,13 @@ const {
 } = require('./reportQueryBuilder');
 
 const TOKENS_PER_KES = 10;
+const SESSION_SELECT = 'id, tutor_id, tutee_id, subject_id, start_time, end_time, status, cost_tokens, payment_status, created_at, subjects:subject_id(id, name, code)';
 
 const displayName = (profile) =>
   [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email || 'Unknown';
 
 const tokenAmount = (row) => Number(row?.token_amount ?? row?.amount_tokens ?? row?.cost_tokens ?? row?.amount ?? 0);
+const sessionPaymentStatus = (session) => session?.payment_status || (tokenAmount(session) === 0 ? 'completed' : 'wallet');
 const tokensToKes = (tokens) => Math.round((Number(tokens || 0) / TOKENS_PER_KES) * 100) / 100;
 const roundOne = (value) => Math.round(Number(value || 0) * 10) / 10;
 
@@ -89,6 +91,7 @@ const baseResponse = ({ summary, charts, rows, exceptions, filters, count }) => 
     paymentStatus: filters.paymentStatus,
     transactionType: filters.transactionType,
     qualificationState: filters.qualificationState,
+    payoutStatus: filters.payoutStatus,
     sortBy: filters.sortBy,
     sortDir: filters.sortDir,
   },
@@ -114,14 +117,15 @@ const sessionSubjectFilter = (query, filters) => {
 const buildSessionQuery = (filters, scope = {}) => {
   let query = supabase
     .from('sessions')
-    .select('id, tutor_id, tutee_id, subject_id, start_time, end_time, status, token_amount, amount_tokens, cost_tokens, payment_status, created_at, subjects:subject_id(id, name, code)', { count: 'exact' });
+    .select(SESSION_SELECT, { count: 'exact' });
   query = applyDateRange(query, filters, 'start_time');
   if (scope.tutorId) query = query.eq('tutor_id', scope.tutorId);
   if (scope.tuteeId) query = query.eq('tutee_id', scope.tuteeId);
   if (filters.tutorId) query = query.eq('tutor_id', filters.tutorId);
   if (filters.tuteeId) query = query.eq('tutee_id', filters.tuteeId);
   if (filters.status) query = query.eq('status', filters.status);
-  if (filters.paymentStatus) query = query.eq('payment_status', filters.paymentStatus);
+  if (filters.paymentStatus === 'completed') query = query.or('payment_status.eq.completed,payment_status.is.null');
+  if (filters.paymentStatus === 'failed') query = query.eq('payment_status', 'failed');
   query = sessionSubjectFilter(query, filters);
   return query;
 };
@@ -203,6 +207,7 @@ const walletSpending = async (filters, user) => {
       .eq('user_id', user.id);
     query = applyDateRange(query, filters, 'created_at');
     if (filters.transactionType) query = query.eq('type', filters.transactionType);
+    if (filters.paymentStatus) query = query.eq('status', filters.paymentStatus);
     if (filters.minAmount !== undefined) query = query.gte('amount_tokens', filters.minAmount);
     if (filters.maxAmount !== undefined) query = query.lte('amount_tokens', filters.maxAmount);
     return query;
@@ -261,7 +266,7 @@ const tutorEarnings = async (filters, user) => {
       .select('id, type, amount_tokens, balance_after, status, reference, description, session_id, created_at', { count: 'exact' })
       .eq('user_id', user.id);
     query = applyDateRange(query, filters, 'created_at');
-    if (filters.payoutStatus) query = query.eq('status', filters.payoutStatus);
+    if (filters.paymentStatus || filters.payoutStatus) query = query.eq('status', filters.paymentStatus || filters.payoutStatus);
     return query;
   };
 
@@ -420,7 +425,7 @@ const adminSessions = async (filters) => {
     durationHours: roundOne(hoursBetween(session.start_time, session.end_time)),
     tokens: tokenAmount(session),
     status: session.status,
-    paymentStatus: session.payment_status || 'wallet',
+    paymentStatus: sessionPaymentStatus(session),
   }));
   const completed = allRows.filter((row) => row.status === 'completed');
   const cancelled = allRows.filter((row) => row.status === 'cancelled');

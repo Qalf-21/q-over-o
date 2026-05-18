@@ -45,7 +45,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({ session, onClose, onSu
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+        className="app-modal-backdrop"
         onClick={onClose}
       >
         <motion.div
@@ -53,13 +53,14 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({ session, onClose, onSu
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-2xl w-full max-w-md shadow-2xl"
+          className="app-modal-panel max-w-md"
         >
+          <div className="app-modal-accent" />
           {!isSuccess ? (
             <>
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center justify-between border-b border-slate-100 p-6">
                 <h2 className="text-xl font-bold text-gray-900">Rate Your Session</h2>
-                <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+                <button onClick={onClose} className="app-icon-button">
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
@@ -107,7 +108,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({ session, onClose, onSu
                     onChange={(e) => setComment(e.target.value)}
                     placeholder="What went well? What could be improved?"
                     rows={4}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none"
+                    className="app-input resize-none py-3"
                   />
                 </div>
 
@@ -133,7 +134,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({ session, onClose, onSu
               <p className="text-gray-600 mb-6">Your feedback helps other students find great tutors.</p>
               <button
                 onClick={onClose}
-                className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors"
+                className="app-button-primary w-full py-3"
               >
                 Close
               </button>

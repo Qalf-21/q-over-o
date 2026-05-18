@@ -156,13 +156,13 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   };
 
   return (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-20">
+    <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
       <div className="px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Left: hamburger */}
         <div className="flex items-center gap-4">
           <button
             onClick={onMenuClick}
-            className="lg:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="app-icon-button lg:hidden"
             aria-label="Open menu"
           >
             <Menu className="w-6 h-6 text-gray-600" />
@@ -173,7 +173,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
         <div className="flex items-center gap-3">
           {/* Token balance + quick deposit — shown to tutees AND tutors in learn mode */}
           {showWallet && (
-            <div className="hidden sm:flex items-center gap-2 bg-indigo-50 rounded-xl px-3 py-1.5">
+            <div className="hidden sm:flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-1.5 shadow-sm">
               <Zap className="w-3.5 h-3.5 text-indigo-500" />
               {isFetching ? (
                 <div className="w-12 h-3.5 bg-indigo-100 rounded animate-pulse" />
@@ -186,7 +186,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                 <button
                   type="button"
                   onClick={onDeposit}
-                  className="ml-1 flex items-center gap-0.5 bg-indigo-600 text-white text-xs font-bold px-2 py-1 rounded-lg hover:bg-indigo-700 transition-colors"
+                  className="ml-1 inline-flex items-center gap-0.5 rounded-lg bg-indigo-600 px-2 py-1 text-xs font-bold text-white transition-colors hover:bg-indigo-700"
                   aria-label="Add tokens"
                 >
                   <Plus className="w-3 h-3" />
@@ -201,7 +201,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             <button
               type="button"
               onClick={() => setIsNotificationsOpen(open => !open)}
-              className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="app-icon-button relative"
               aria-label="Notifications"
               aria-expanded={isNotificationsOpen}
             >
@@ -214,7 +214,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             </button>
 
             {isNotificationsOpen && (
-              <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden z-30">
+              <div className="absolute right-0 z-30 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/80">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                   <h2 className="text-sm font-bold text-gray-900">Notifications</h2>
                   {unreadCount > 0 && (
@@ -271,18 +271,18 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           {/* Profile */}
           <button
             onClick={() => navigate('/dashboard/profile')}
-            className="hidden sm:flex items-center gap-3 pl-4 border-l border-gray-200 hover:opacity-80 transition-opacity group"
+            className="group hidden items-center gap-3 rounded-2xl border border-transparent py-1 pl-3 pr-1 transition-all hover:border-indigo-100 hover:bg-indigo-50/70 sm:flex"
             aria-label="Go to profile settings"
           >
             <div className="text-right">
-              <p className="text-sm font-semibold text-gray-900 group-hover:text-indigo-700 transition-colors">
+              <p className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-indigo-700">
                 {displayName}
               </p>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-slate-500">
                 {isTutor ? 'Tutor account' : 'Tutee account'}
               </p>
             </div>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-400 flex items-center justify-center text-white font-bold shadow-md ring-2 ring-transparent group-hover:ring-indigo-300 transition-all">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 font-bold text-white shadow-md shadow-indigo-500/20 ring-2 ring-transparent transition-all group-hover:ring-indigo-300">
               {initial}
             </div>
           </button>

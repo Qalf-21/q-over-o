@@ -74,7 +74,7 @@ export const AvailabilityModal: React.FC<AvailabilityModalProps> = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          className="app-modal-backdrop"
           onClick={onClose}
         >
           <motion.div
@@ -82,17 +82,18 @@ export const AvailabilityModal: React.FC<AvailabilityModalProps> = ({
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.95, opacity: 0 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-auto shadow-2xl"
+            className="app-modal-panel max-h-[85vh] max-w-2xl overflow-auto"
           >
+            <div className="app-modal-accent" />
             {/* Header */}
-            <div className="sticky top-0 bg-white border-b border-gray-100 p-6 flex items-center justify-between z-10">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 p-6 backdrop-blur">
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Manage Availability</h2>
                 <p className="text-sm text-gray-500 mt-1">Set when students can book you</p>
               </div>
               <button 
                 onClick={onClose}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="app-icon-button"
               >
                 <X className="w-5 h-5 text-gray-500" />
               </button>
@@ -100,20 +101,20 @@ export const AvailabilityModal: React.FC<AvailabilityModalProps> = ({
 
             <div className="p-6 space-y-6">
               {error && (
-                <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-center gap-2">
+                <div className="app-alert-error">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   {error}
                 </div>
               )}
 
               {/* Add New Slot */}
-              <div className="bg-gray-50 rounded-xl p-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold text-gray-900">Add Time Slot</h3>
                   {!isEditing ? (
                     <button
                       onClick={() => setIsEditing(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+                      className="app-button-primary px-4 py-2"
                     >
                       <Plus className="w-4 h-4" />
                       Add Slot
@@ -139,11 +140,11 @@ export const AvailabilityModal: React.FC<AvailabilityModalProps> = ({
                   >
                     <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Day</label>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">Day</label>
                         <select
                           value={newSlot.dayOfWeek}
                           onChange={(e) => setNewSlot({...newSlot, dayOfWeek: parseInt(e.target.value)})}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-indigo-500 outline-none"
+                          className="app-select w-full"
                         >
                           {DAYS.map((day, i) => (
                             <option key={i} value={i}>{day}</option>
@@ -151,27 +152,27 @@ export const AvailabilityModal: React.FC<AvailabilityModalProps> = ({
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Start</label>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">Start</label>
                         <input
                           type="time"
                           value={newSlot.startTime}
                           onChange={(e) => setNewSlot({...newSlot, startTime: e.target.value})}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-indigo-500 outline-none"
+                          className="app-input"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">End</label>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">End</label>
                         <input
                           type="time"
                           value={newSlot.endTime}
                           onChange={(e) => setNewSlot({...newSlot, endTime: e.target.value})}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-indigo-500 outline-none"
+                          className="app-input"
                         />
                       </div>
                     </div>
                     <button
                       onClick={handleAddSlot}
-                      className="w-full py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+                      className="inline-flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
                     >
                       Save Slot
                     </button>
@@ -184,7 +185,7 @@ export const AvailabilityModal: React.FC<AvailabilityModalProps> = ({
                 <h3 className="font-semibold text-gray-900">Your Schedule</h3>
                 
                 {slots.length === 0 ? (
-                  <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                  <div className="app-empty-state py-8">
                     <Clock className="w-10 h-10 text-gray-400 mx-auto mb-3" />
                     <p className="text-gray-500">No availability set</p>
                     <p className="text-sm text-gray-400">Add time slots so students can book you</p>
@@ -192,13 +193,13 @@ export const AvailabilityModal: React.FC<AvailabilityModalProps> = ({
                 ) : (
                   groupedSlots.map(({ day, dayIndex, daySlots }) => (
                     daySlots.length > 0 && (
-                      <div key={dayIndex} className="bg-white border border-gray-100 rounded-xl p-4">
+                      <div key={dayIndex} className="app-card p-4">
                         <h4 className="font-medium text-gray-900 mb-3">{day}</h4>
                         <div className="flex flex-wrap gap-2">
                           {daySlots.map(slot => (
                             <div
                               key={slot.id}
-                              className="flex items-center gap-2 px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm"
+                              className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm text-indigo-700"
                             >
                               <Clock className="w-4 h-4" />
                               <span className="font-medium">{slot.startTime} - {slot.endTime}</span>

@@ -23,30 +23,12 @@ export const AuthButton: React.FC<AuthButtonProps> = ({
   className = '',
   icon
 }) => {
-  const baseStyles = `
-    w-full py-3.5 px-6 rounded-xl font-semibold text-base
-    transition-all duration-200
-    flex items-center justify-center gap-2
-    disabled:opacity-50 disabled:cursor-not-allowed
-    active:scale-[0.98]
-  `;
+  const baseStyles = 'w-full px-6 py-3.5 text-base active:scale-[0.98]';
 
   const variants = {
-    primary: `
-      bg-gradient-to-r from-indigo-600 to-purple-600 
-      text-white shadow-lg shadow-indigo-500/25
-      hover:shadow-xl hover:shadow-indigo-500/30
-      hover:scale-[1.02]
-    `,
-    secondary: `
-      bg-white text-gray-700 border-2 border-gray-200
-      hover:border-indigo-600 hover:text-indigo-600
-      shadow-sm
-    `,
-    outline: `
-      bg-transparent text-indigo-600 border-2 border-indigo-600
-      hover:bg-indigo-50
-    `
+    primary: 'app-button-primary',
+    secondary: 'app-button-secondary',
+    outline: 'app-button-secondary border-indigo-200 text-indigo-700'
   };
 
   return (

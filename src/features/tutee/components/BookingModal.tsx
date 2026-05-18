@@ -313,7 +313,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+          className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm"
           onClick={onClose}
         />
 
@@ -324,17 +324,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 12 }}
           transition={{ type: 'spring', duration: 0.35, bounce: 0.15 }}
-          className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden max-h-[90vh] flex flex-col"
+          className="app-modal-panel flex max-h-[90vh] max-w-lg flex-col"
           onClick={e => e.stopPropagation()}
         >
           {/* Gradient accent bar */}
-          <div className="h-1.5 w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 flex-shrink-0" />
+          <div className="app-modal-accent flex-shrink-0" />
 
           {/* Close button */}
           <button
             onClick={onClose}
             disabled={isProcessing}
-            className="absolute top-4 right-4 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-40 z-10"
+            className="app-icon-button absolute right-4 top-4 z-10 h-8 w-8"
             aria-label="Close"
           >
             <X className="w-4 h-4" />
@@ -386,11 +386,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       <span className="text-sm">Loading availability…</span>
                     </div>
                   ) : slotsError ? (
-                    <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <div className="app-alert-error">
                       <AlertCircle className="w-4 h-4 flex-shrink-0" /> {slotsError}
                     </div>
                   ) : slots.length === 0 ? (
-                    <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                    <div className="app-empty-state py-8">
                       <Calendar className="w-8 h-8 text-gray-300 mx-auto mb-2" />
                       <p className="text-sm font-medium text-gray-500">No available slots</p>
                       <p className="text-xs text-gray-400 mt-1">This tutor hasn't added availability yet</p>
@@ -412,7 +412,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                                   onClick={() => handleSlotSelect(slot)}
                                   disabled={!fits}
                                   title={!fits ? 'Slot is too short (< 30 min)' : undefined}
-                                  className={`px-3 py-2 rounded-xl text-sm font-medium transition-all border ${
+                                  className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-all ${
                                     isSelected
                                       ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                                       : fits
@@ -447,7 +447,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                         setSessionStart(e.target.value);
                         setBookingError(null);
                       }}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm"
+                      className="app-input"
                     />
                     <p className="mt-1 text-xs text-gray-400">
                       Earliest start is {fmt12(selectedSlot.start_time)}. Sessions must start at least 10 minutes from now.
@@ -501,7 +501,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     <select
                       value={selectedSubjectId}
                       onChange={e => setSelectedSubjectId(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm bg-white"
+                      className="app-select w-full"
                     >
                       {tutor.subjects.map(s => (
                         <option key={s.id} value={s.id}>{s.name}</option>
@@ -520,7 +520,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     onChange={e => setTopic(e.target.value)}
                     placeholder="e.g., Integration by parts, Chapter 5 problems…"
                     rows={3}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none text-sm"
+                    className="app-input resize-none py-3"
                   />
                 </div>
 
@@ -550,7 +550,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 )}
 
                 {!hasEnoughTokens && selectedSlot && (
-                  <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <div className="app-alert-error">
                     <AlertCircle className="w-4 h-4 flex-shrink-0" />
                     You have {userTokens} tokens but need {totalCost}. Please top up.
                   </div>
@@ -576,7 +576,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 </div>
 
                 {bookingError && (
-                  <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <div className="app-alert-error">
                     <AlertCircle className="w-4 h-4 flex-shrink-0" /> {bookingError}
                   </div>
                 )}
@@ -628,7 +628,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <button
                 onClick={() => setStep('confirm')}
                 disabled={!canProceed}
-                className="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.98] shadow-md shadow-indigo-200"
+                className="app-button-primary w-full py-3"
               >
                 Continue to Payment
               </button>
@@ -639,14 +639,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <button
                   onClick={() => { setStep('select'); setBookingError(null); }}
                   disabled={isProcessing}
-                  className="flex-1 py-3 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="app-button-secondary flex-1 py-3"
                 >
                   Back
                 </button>
                 <button
                   onClick={handleConfirm}
                   disabled={isProcessing}
-                  className="flex-1 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-md shadow-indigo-200"
+                  className="app-button-primary flex-1 py-3"
                 >
                   {isProcessing && <Loader2 className="w-4 h-4 animate-spin" />}
                   {isProcessing ? 'Confirming…' : 'Confirm Booking'}
@@ -657,7 +657,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             {step === 'success' && (
               <button
                 onClick={onClose}
-                className="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 transition-all active:scale-[0.98]"
+                className="app-button-primary w-full py-3"
               >
                 View My Sessions
               </button>

@@ -1,3 +1,126 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-slate-50 text-slate-950 antialiased;
+  }
+
+  body {
+    @apply min-h-screen bg-slate-50 font-sans;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  ::selection {
+    @apply bg-indigo-100 text-indigo-950;
+  }
+}
+
+@layer components {
+  .app-surface {
+    @apply min-h-full bg-[radial-gradient(circle_at_top_left,rgba(79,70,229,0.08),transparent_30rem),linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)];
+  }
+
+  .app-page {
+    @apply space-y-6;
+  }
+
+  .app-page-header {
+    @apply flex flex-col gap-3 rounded-2xl border border-white/70 bg-white/85 p-5 shadow-sm shadow-slate-200/70 backdrop-blur sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  .app-page-title {
+    @apply text-2xl font-bold tracking-normal text-slate-950;
+  }
+
+  .app-page-subtitle {
+    @apply mt-1 max-w-3xl text-sm leading-6 text-slate-600;
+  }
+
+  .app-card {
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/70;
+  }
+
+  .app-card-hover {
+    @apply transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-100 hover:shadow-lg hover:shadow-slate-200/80;
+  }
+
+  .app-panel {
+    @apply rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-sm shadow-slate-200/70 backdrop-blur;
+  }
+
+  .app-soft-panel {
+    @apply rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-purple-50 p-5;
+  }
+
+  .app-empty-state {
+    @apply rounded-2xl border border-dashed border-slate-300 bg-white/70 px-6 py-12 text-center;
+  }
+
+  .app-input {
+    @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400;
+  }
+
+  .app-select {
+    @apply rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400;
+  }
+
+  .app-button-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-500/20 transition-all hover:from-indigo-700 hover:to-purple-700 hover:shadow-md hover:shadow-indigo-500/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .app-button-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .app-button-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition-all hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .app-icon-button {
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .app-segment {
+    @apply inline-flex items-center rounded-full border border-slate-200 bg-white p-1 shadow-sm;
+  }
+
+  .app-filter-chip {
+    @apply rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition-all hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700;
+  }
+
+  .app-filter-chip-active {
+    @apply border-indigo-600 bg-indigo-600 text-white shadow-sm shadow-indigo-500/20 hover:border-indigo-600 hover:bg-indigo-600 hover:text-white;
+  }
+
+  .app-badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
+
+  .app-modal-backdrop {
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm;
+  }
+
+  .app-modal-panel {
+    @apply relative w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/20;
+  }
+
+  .app-modal-accent {
+    @apply h-1.5 w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500;
+  }
+
+  .app-alert-error {
+    @apply flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700;
+  }
+
+  .app-alert-info {
+    @apply flex items-start gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-800;
+  }
+}

@@ -30,10 +30,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   const canDeposit = !isTutor || isLearningMode;
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="app-surface flex h-screen overflow-hidden">
         {/* Sidebar — desktop always visible, mobile overlay */}
         <div className="hidden lg:flex lg:flex-shrink-0">
-          <div className="w-64 flex flex-col border-r border-gray-200 bg-white">
+          <div className="w-64 flex flex-col border-r border-slate-200/80 bg-white/95 shadow-sm">
             <Sidebar user={user} onClose={() => setIsSidebarOpen(false)} />
           </div>
         </div>
@@ -42,7 +42,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
         {isSidebarOpen && (
           <div className="fixed inset-0 z-40 lg:hidden">
             <div
-              className="fixed inset-0 bg-gray-600/75 backdrop-blur-sm"
+              className="fixed inset-0 bg-slate-950/55 backdrop-blur-sm"
               onClick={() => setIsSidebarOpen(false)}
             />
             <div className="fixed inset-y-0 left-0 w-64 bg-white z-50 shadow-2xl">

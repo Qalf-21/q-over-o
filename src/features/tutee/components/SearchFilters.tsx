@@ -45,7 +45,7 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({ filters, onChange,
   }, []);
 
   return (
-    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm space-y-4">
+    <div className="app-panel space-y-4">
       {/* Search Bar */}
       <div className="relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -54,7 +54,7 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({ filters, onChange,
           placeholder="Search by name, subject, or course code..."
           value={filters.query}
           onChange={(e) => onChange({ ...filters, query: e.target.value })}
-          className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+          className="app-input py-3 pl-12"
         />
       </div>
 
@@ -69,7 +69,7 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({ filters, onChange,
         <select
           value={filters.subject || ''}
           onChange={(e) => onChange({ ...filters, subject: e.target.value || undefined })}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 outline-none bg-white"
+          className="app-select"
         >
           <option value="">All Subjects</option>
           {subjects.map((s) => (
@@ -83,7 +83,7 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({ filters, onChange,
         <select
           value={filters.minRating || ''}
           onChange={(e) => onChange({ ...filters, minRating: e.target.value ? parseInt(e.target.value) : undefined })}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 outline-none bg-white"
+          className="app-select"
         >
           <option value="">Any Rating</option>
           <option value="4">4+ Stars</option>
@@ -95,7 +95,7 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({ filters, onChange,
         <select
           value={filters.maxPrice || ''}
           onChange={(e) => onChange({ ...filters, maxPrice: e.target.value ? parseInt(e.target.value) : undefined })}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-indigo-500 outline-none bg-white"
+          className="app-select"
         >
           <option value="">Any Price</option>
           <option value="300">Under 300 tokens</option>
@@ -104,21 +104,21 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({ filters, onChange,
         </select>
 
         {/* Available Now Toggle */}
-        <label className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg cursor-pointer hover:border-indigo-300 transition-colors">
+        <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50">
           <input
             type="checkbox"
             checked={filters.availableNow || false}
             onChange={(e) => onChange({ ...filters, availableNow: e.target.checked })}
             className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
           />
-          <span className="text-sm text-gray-700">Available Now</span>
+          <span className="font-medium text-slate-700">Available Now</span>
         </label>
 
         {/* Clear Filters */}
         {hasActiveFilters && (
           <button
             onClick={onClear}
-            className="flex items-center gap-1 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            className="app-button-danger px-3 py-2"
           >
             <X className="w-4 h-4" />
             Clear

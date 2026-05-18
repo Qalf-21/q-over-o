@@ -113,11 +113,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
     <>
       <div className="flex flex-col h-full">
         {/* ── Header ── */}
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center justify-between border-b border-slate-100 p-6">
           <Logo size="sm" />
           <button
             onClick={onClose}
-            className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
+            className="app-icon-button lg:hidden"
             aria-label="Close navigation"
           >
             <X className="w-5 h-5 text-gray-500" />
@@ -125,9 +125,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
         </div>
 
         {/* ── Navigation ── */}
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4 px-4">
-            Menu
+        <nav className="flex-1 space-y-1 overflow-y-auto p-4">
+          <div className="mb-4 px-4 text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Workspace
           </div>
 
           {/* Tutor/Learn mode switcher — only shown to tutors */}
@@ -139,7 +139,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
                 className={`text-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                   !isLearningMode
                     ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-200'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
                 Tutor
@@ -150,7 +150,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
                 className={`text-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                   isLearningMode
                     ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-200'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
                 Learn
@@ -166,11 +166,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
               className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all duration-200 ${
                 isActive(item.path)
                   ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 shadow-sm'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
               }`}
             >
               <item.icon
-                className={`w-5 h-5 ${isActive(item.path) ? 'text-indigo-600' : 'text-gray-400'}`}
+                className={`w-5 h-5 ${isActive(item.path) ? 'text-indigo-600' : 'text-slate-400'}`}
               />
               {item.label}
             </NavLink>
@@ -190,7 +190,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
         </nav>
 
         {/* ── User section ── */}
-        <div className="p-4 border-t border-gray-100">
+        <div className="border-t border-slate-100 p-4">
           {/* Clickable profile card — navigates to /dashboard/profile */}
           <button
             type="button"
@@ -198,10 +198,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl mb-3 transition-all group ${
               isProfileActive
                 ? 'bg-gradient-to-r from-indigo-50 to-purple-50 shadow-sm'
-                : 'bg-gray-50 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50'
+                : 'bg-slate-50 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50'
             }`}
           >
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-semibold shadow-sm">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-sm font-semibold text-white shadow-sm">
               {initial}
             </div>
             <div className="flex-1 text-left min-w-0">
@@ -214,7 +214,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ user, onClose }) => {
           <button
             type="button"
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors text-sm font-medium"
+            className="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
           >
             <LogOut className="w-4 h-4" />
             Sign out

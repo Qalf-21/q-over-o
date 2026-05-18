@@ -31,7 +31,6 @@ import { AdminUsers } from '../features/admin/pages/AdminUsers';
 import { AdminTutors } from '../features/admin/pages/AdminTutors';
 import { AdminSessions } from '../features/admin/pages/AdminSessions';
 import { AdminWallets } from '../features/admin/pages/AdminWallets';
-import { AdminReports } from '../features/admin/pages/AdminReports';
 import { adminApi } from '../api/adminApi';
 import { JaasMeetingPage } from '../features/sessions/JaasMeetingPage';
 import { AdminReportPage } from '../modules/reports/pages/AdminReportPage';
@@ -71,8 +70,8 @@ const AdminDashboard: React.FC = () => (
         <Route path="wallets" element={<AdminWallets />} />
         <Route path="reviews" element={<AdminSectionPage title="Reviews" description="Moderate review content and rating signals." loadRows={adminApi.getReviews} />} />
         <Route path="subject-requests" element={<AdminSubjectRequests />} />
-        <Route path="reports" element={<AdminReports />} />
-        <Route path="reports/analytics" element={<AdminReports />} />
+        <Route path="reports" element={<Navigate to="/dashboard/admin/reports/financial" replace />} />
+        <Route path="reports/analytics" element={<Navigate to="/dashboard/admin/reports/financial" replace />} />
         <Route path="reports/financial" element={<AdminReportPage type={ReportType.ADMIN_PLATFORM_REVENUE} />} />
         <Route path="reports/wallet" element={<AdminReportPage type={ReportType.ADMIN_WALLET_AUDIT} />} />
         <Route path="reports/sessions" element={<AdminReportPage type={ReportType.ADMIN_SESSION_ANALYTICS} />} />

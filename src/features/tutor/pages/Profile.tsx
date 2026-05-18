@@ -81,7 +81,7 @@ const Section: React.FC<SectionProps> = ({ title, icon, children, delay = 0 }) =
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ delay }}
-    className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+    className="app-card overflow-hidden"
   >
     <div className="px-6 py-4 border-b border-gray-50 flex items-center gap-2">
       <span className="text-indigo-600">{icon}</span>
@@ -319,12 +319,12 @@ const DeleteModal: React.FC<DeleteModalProps> = ({ onConfirm, onCancel, isLoadin
   const isMatch = confirmText === 'DELETE';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="app-modal-backdrop">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6"
+        className="app-modal-panel max-w-md p-6"
       >
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
@@ -349,7 +349,7 @@ const DeleteModal: React.FC<DeleteModalProps> = ({ onConfirm, onCancel, isLoadin
           value={confirmText}
           onChange={(e) => setConfirmText(e.target.value)}
           placeholder="DELETE"
-          className="w-full px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 mb-5"
+          className="mb-5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm outline-none transition-all focus:border-red-400 focus:ring-2 focus:ring-red-300"
           autoFocus
         />
 
@@ -357,14 +357,14 @@ const DeleteModal: React.FC<DeleteModalProps> = ({ onConfirm, onCancel, isLoadin
           <button
             onClick={onCancel}
             disabled={isLoading}
-            className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+            className="app-button-secondary flex-1"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
             disabled={!isMatch || isLoading}
-            className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isLoading ? (
               <>
@@ -664,7 +664,7 @@ export const Profile: React.FC = () => {
   if (loadError) {
     return (
       <div className="max-w-3xl mx-auto p-6">
-        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-3">
+        <div className="app-alert-error">
           <AlertTriangle className="w-5 h-5 flex-shrink-0" />
           {loadError}
           <button onClick={() => fetchProfile()} className="ml-auto text-indigo-600 hover:underline font-medium">
@@ -696,17 +696,17 @@ export const Profile: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <div className="max-w-3xl mx-auto space-y-6 pb-10">
+      <div className="app-page mx-auto max-w-3xl pb-10">
         {/* ── Page header ── */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between gap-4 flex-wrap"
+          className="app-page-header"
         >
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Manage your account settings and preferences
+            <h1 className="app-page-title">My Profile</h1>
+            <p className="app-page-subtitle">
+              Manage account details, security, tutor settings, and public profile visibility.
             </p>
           </div>
 
@@ -714,7 +714,7 @@ export const Profile: React.FC = () => {
           {isTutor && (
             <button
               onClick={() => setShowPublicProfile(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-indigo-200 text-indigo-600 text-sm font-medium rounded-xl hover:bg-indigo-50 transition-colors"
+              className="app-button-secondary"
             >
               <EyeIcon className="w-4 h-4" />
               View public profile
@@ -727,7 +727,7 @@ export const Profile: React.FC = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
-          className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6"
+          className="app-card p-6"
         >
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
             {/* Avatar */}
@@ -930,7 +930,7 @@ export const Profile: React.FC = () => {
                 />
 
                 {qualification && !qualification.qualified && (
-                  <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+                  <div className="app-soft-panel mt-5">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-bold text-gray-900">Paid tutoring progress</p>
@@ -1212,7 +1212,7 @@ export const Profile: React.FC = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="bg-white rounded-2xl border border-red-100 shadow-sm overflow-hidden"
+          className="overflow-hidden rounded-2xl border border-red-100 bg-white shadow-sm shadow-red-100/60"
         >
           <div className="px-6 py-4 border-b border-red-50 flex items-center gap-2">
             <span className="text-red-500">

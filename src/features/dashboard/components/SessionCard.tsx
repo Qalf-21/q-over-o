@@ -68,7 +68,7 @@ export const SessionCard: React.FC<SessionCardProps> = ({
       layout
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
+      className="app-card app-card-hover cursor-pointer p-5"
       onClick={() => onClick?.(session)}
     >
       <div className="flex items-start justify-between mb-4">
@@ -77,11 +77,11 @@ export const SessionCard: React.FC<SessionCardProps> = ({
             {session.tuteeName[0]}
           </div>
           <div>
-            <h4 className="font-semibold text-gray-900">{session.tuteeName}</h4>
+            <h4 className="font-semibold text-slate-900">{session.tuteeName}</h4>
             <p className="text-sm text-gray-500">{session.subject}</p>
           </div>
         </div>
-        <span className={`px-3 py-1 rounded-full text-xs font-semibold border capitalize ${statusColors[session.status]}`}>
+        <span className={`app-badge border capitalize ${statusColors[session.status]}`}>
           {session.status.replace('-', ' ')}
         </span>
         {isConfirmed && (
@@ -122,7 +122,7 @@ export const SessionCard: React.FC<SessionCardProps> = ({
                   e.stopPropagation();
                   (onDecline || onCancel)?.(session.id);
                 }}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                className="app-button-danger px-4 py-2"
                >
                 <XCircle className="w-4 h-4" />
                 {onDecline ? 'Decline' : 'Cancel'}
@@ -135,7 +135,7 @@ export const SessionCard: React.FC<SessionCardProps> = ({
                     e.stopPropagation();
                     onAccept(session.id);
                  }}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
                 >
                   <CheckCircle className="w-4 h-4" />
                   Accept
@@ -151,7 +151,7 @@ export const SessionCard: React.FC<SessionCardProps> = ({
                   e.stopPropagation();
                   onCancel?.(session.id);
                 }}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                className="app-button-danger px-4 py-2"
               >
                 <XCircle className="w-4 h-4" />
                 Cancel
@@ -163,7 +163,7 @@ export const SessionCard: React.FC<SessionCardProps> = ({
                     e.stopPropagation();
                     onComplete(session.id);
                   }}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
                 >
                   <CheckCircle className="w-4 h-4" />
                   Complete
@@ -178,7 +178,7 @@ export const SessionCard: React.FC<SessionCardProps> = ({
                 e.stopPropagation();
                 onJoin?.(session);
               }}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:shadow-md rounded-lg transition-all"
+              className="app-button-primary px-4 py-2"
             >
               <PlayCircle className="w-4 h-4" />
               Join Session

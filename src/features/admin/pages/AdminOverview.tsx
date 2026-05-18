@@ -41,15 +41,19 @@ import type {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const fullName = (p?: { first_name: string; last_name: string } | null) =>
+const fullName = (p?: { first_name?: string | null; last_name?: string | null } | null) =>
   p ? [p.first_name, p.last_name].filter(Boolean).join(' ') || '—' : '—';
 
 const fmt = (n: number) => n.toLocaleString();
 
-const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-US', {
+const fmtDate = (iso?: string | null) => {
+  if (!iso) return 'Not available';
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime()) || date.getFullYear() < 1990) return 'Not available';
+  return date.toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
   });
+};
 
 const sessionTokens = (s: RecentSession) =>
   s.token_amount ?? s.amount_tokens ?? s.cost_tokens ?? 0;

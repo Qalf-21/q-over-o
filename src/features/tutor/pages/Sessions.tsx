@@ -93,19 +93,22 @@ export const Sessions: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Video className="w-6 h-6 text-indigo-600" />
-        <h1 className="text-2xl font-bold text-gray-900">My Sessions</h1>
-        <p className="text-gray-600 mt-1">Manage your tutoring appointments</p>
-      </div>
-
-      <div className="flex items-center gap-2 text-sm text-gray-500">
-        <span>{filteredSessions.length} sessions</span>
+    <div className="app-page">
+      <div className="app-page-header">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+            <Video className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="app-page-title">My Sessions</h1>
+            <p className="app-page-subtitle">Review requests, join confirmed sessions, and close completed tutoring work.</p>
+          </div>
+        </div>
+        <span className="app-badge bg-slate-100 text-slate-600">{filteredSessions.length} sessions</span>
       </div>
 
       {/* Filters and Search */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+      <div className="app-panel flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
           <Filter className="w-4 h-4" />
           Filters
@@ -117,8 +120,8 @@ export const Sessions: React.FC = () => {
               onClick={() => setActiveFilter(filter.value)}
               className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
                 activeFilter === filter.value
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'bg-white text-gray-600 border border-gray-200 hover:border-indigo-300'
+                  ? 'app-filter-chip-active'
+                  : 'app-filter-chip'
               }`}
             >
               {filter.label}
@@ -133,14 +136,14 @@ export const Sessions: React.FC = () => {
             placeholder="Search sessions..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+            className="app-input pl-10"
           />
         </div>
       </div>
 
       {/* Sessions List */}
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+        <div className="app-alert-error">{error}</div>
       )}
 
       {isLoading ? (
@@ -153,7 +156,7 @@ export const Sessions: React.FC = () => {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-center py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-300"
+            className="app-empty-state"
           >
             <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No sessions found</h3>

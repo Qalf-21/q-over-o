@@ -246,10 +246,10 @@ export interface AdminCharts {
 export interface RecentUser {
   id: string;
   email: string;
-  first_name: string;
-  last_name: string;
+  first_name: string | null;
+  last_name: string | null;
   role: string;
-  created_at: string;
+  created_at: string | null;
 }
 
 export interface RecentSession {
@@ -260,7 +260,7 @@ export interface RecentSession {
   token_amount?: number;
   amount_tokens?: number;
   cost_tokens?: number;
-  created_at: string;
+  created_at: string | null;
   tutor?: { first_name: string; last_name: string };
   tutee?: { first_name: string; last_name: string };
 }

@@ -161,8 +161,7 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4"
-        style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+        className="app-modal-backdrop"
         onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
       >
         <motion.div
@@ -170,17 +169,18 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: 20 }}
           transition={{ type: 'spring', stiffness: 340, damping: 30 }}
-          className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
+          className="app-modal-panel flex max-h-[90vh] max-w-2xl flex-col"
           onClick={(e) => e.stopPropagation()}
         >
           {/* ── Header bar ── */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+          <div className="app-modal-accent flex-shrink-0" />
+          <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-100 px-6 py-4">
             <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
               Tutor Profile
             </p>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              className="app-icon-button"
               aria-label="Close"
             >
               <X className="w-5 h-5" />
@@ -196,7 +196,7 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
             )}
 
             {loadError && (
-              <div className="m-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700 text-sm">
+              <div className="app-alert-error m-6">
                 <AlertCircle className="w-5 h-5 flex-shrink-0" />
                 {loadError}
               </div>
@@ -287,7 +287,7 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
 
                 {/* Bio */}
                 {tutor.bio && (
-                  <div className="bg-white rounded-xl border border-gray-100 p-4">
+                <div className="app-card p-4">
                     <h3 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
                       <GraduationCap className="w-4 h-4 text-indigo-600" />
                       About {tutor.name.split(' ')[0]}
@@ -298,7 +298,7 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
 
                 {/* Subjects detail */}
                 {tutor.subjects.length > 0 && (
-                  <div className="bg-white rounded-xl border border-gray-100 p-4">
+                  <div className="app-card p-4">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
                       <BookOpen className="w-4 h-4 text-indigo-600" />
                       Subjects Taught
@@ -325,7 +325,7 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
 
                 {/* Reviews */}
                 {reviews.length > 0 ? (
-                  <div className="bg-white rounded-xl border border-gray-100 p-4">
+                  <div className="app-card p-4">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
                       <Star className="w-4 h-4 text-amber-500" />
                       Student Reviews
@@ -363,7 +363,7 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-6 text-center">
+                  <div className="app-empty-state p-6">
                     <Users className="w-8 h-8 text-gray-300 mx-auto mb-2" />
                     <p className="text-sm text-gray-400">No reviews yet</p>
                   </div>
@@ -378,7 +378,7 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
     <button
       onClick={() => { onBook!(tutor!); onClose(); }}
       disabled={!tutor!.isAvailable}
-      className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-md shadow-indigo-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500 disabled:shadow-none"
+      className="app-button-primary w-full py-3.5 disabled:from-slate-400 disabled:to-slate-500 disabled:shadow-none"
     >
       {tutor!.isAvailable
         ? `Book a Session with ${tutor!.name.split(' ')[0]}`

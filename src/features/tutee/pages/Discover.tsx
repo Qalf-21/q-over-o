@@ -83,19 +83,21 @@ export const Discover: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Find a Tutor</h1>
-        <p className="text-gray-600 mt-1">Connect with expert students ready to help you succeed</p>
+    <div className="app-page">
+      <div className="app-page-header">
+        <div>
+          <h1 className="app-page-title">Find a Tutor</h1>
+          <p className="app-page-subtitle">Discover available tutors by subject, rating, price, and schedule fit.</p>
+        </div>
       </div>
 
       {/* Token Balance */}
-      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-4 text-white flex items-center justify-between">
+      <div className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 p-5 text-white shadow-lg shadow-indigo-500/20">
         <div>
-          <p className="text-indigo-100 text-sm">Your Balance</p>
+          <p className="text-sm font-medium text-indigo-100">Available Balance</p>
           <p className="text-2xl font-bold">{userTokens} tokens</p>
         </div>
-        <button className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors">
+        <button type="button" className="rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold transition-colors hover:bg-white/25">
           Top Up
         </button>
       </div>
@@ -113,11 +115,11 @@ export const Discover: React.FC = () => {
           <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
         </div>
       ) : error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div className="app-alert-error">
           {error}
         </div>
       ) : tutors.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
+        <div className="app-empty-state">
           <GraduationCap className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No tutors found</h3>
           <p className="text-gray-500">Try adjusting your search or filters</p>

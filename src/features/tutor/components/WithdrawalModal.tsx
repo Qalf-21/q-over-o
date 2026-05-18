@@ -65,7 +65,7 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          className="app-modal-backdrop"
           onClick={handleClose}
         >
           <motion.div
@@ -73,13 +73,13 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.95, opacity: 0 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden"
+            className="app-modal-panel max-w-md"
           >
             {/* Header */}
             <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-white">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold">Withdraw to M-Pesa</h2>
-                <button onClick={handleClose} className="p-2 hover:bg-white/20 rounded-lg transition-colors">
+                <button onClick={handleClose} className="rounded-xl p-2 transition-colors hover:bg-white/20">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -88,7 +88,7 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
 
             <div className="p-6">
               {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-center gap-2">
+                <div className="app-alert-error mb-4">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   {error}
                 </div>
@@ -106,7 +106,7 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
                       placeholder="Min. 100 tokens"
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all text-lg font-semibold"
+                      className="app-input py-3 text-lg font-semibold"
                     />
                     <p className="text-sm text-gray-500 mt-1">
                       = KES {kesAmount.toLocaleString()} • Min: 100 tokens (KES 10)
@@ -120,11 +120,11 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
                       value={phoneNumber}
                       onChange={(e) => setPhoneNumber(e.target.value)}
                       placeholder="07XX XXX XXX"
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all"
+                      className="app-input py-3"
                     />
                   </div>
 
-                  <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm space-y-2">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Amount</span>
                       <span className="font-medium">{numericAmount || 0} tokens</span>
@@ -169,7 +169,7 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
                   <div className="flex gap-3">
                     <button
                       onClick={() => setStep('form')}
-                      className="flex-1 py-3 border-2 border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
+                      className="app-button-secondary flex-1 py-3"
                     >
                       Back
                     </button>
@@ -203,7 +203,7 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
                   </p>
                   <button
                     onClick={handleClose}
-                    className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors"
+                    className="app-button-primary w-full py-3"
                   >
                     Done
                   </button>

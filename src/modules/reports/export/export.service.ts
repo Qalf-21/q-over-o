@@ -18,10 +18,11 @@ export const exportReport = <T extends ReportRow>(
   data: ReportData<T>,
   columns: ReportColumn<T>[],
   role: string,
+  generatedBy: string,
 ) => {
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   if (format === 'PDF') {
-    const html = generatePdfHtml(title, data, columns, role);
+    const html = generatePdfHtml(title, data, columns, role, generatedBy);
     const popup = window.open('', '_blank');
     if (popup) {
       popup.document.write(html);

@@ -157,7 +157,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
             value={customAmount || (amountKes > 0 ? String(amountKes) : '')}
             onChange={(e) => handleCustomAmount(e.target.value)}
             placeholder="KES 50 = 500 tokens"
-            className="w-full pl-14 pr-4 py-3.5 border-2 border-gray-200 rounded-2xl text-gray-900 font-semibold text-lg placeholder:text-gray-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all"
+            className="app-input py-3.5 pl-14 pr-4 text-lg font-semibold placeholder:text-slate-300"
           />
           {amountKes > 0 && (
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
@@ -188,7 +188,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
             value={phoneDisplay}
             onChange={(e) => handlePhoneChange(e.target.value)}
             placeholder="01xxxxxxxx / 07xxxxxxxx"
-            className={`w-full pl-10 pr-10 py-3.5 border-2 rounded-2xl text-gray-900 font-medium placeholder:text-gray-300 focus:ring-4 outline-none transition-all ${
+            className={`w-full rounded-xl border bg-white py-3.5 pl-10 pr-10 font-medium text-slate-900 outline-none transition-all placeholder:text-slate-300 focus:ring-2 ${
               phoneError
                 ? 'border-red-400 focus:border-red-400 focus:ring-red-400/10'
                 : phone && !phoneError
@@ -217,7 +217,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         <motion.div
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-4 border border-indigo-100"
+          className="app-soft-panel p-4"
         >
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600">You pay</span>
@@ -238,7 +238,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
 
       {/* Global error */}
       {error && (
-        <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-xl p-3.5 text-sm text-red-700">
+        <div className="app-alert-error p-3.5">
           <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
@@ -249,7 +249,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         type="button"
         onClick={() => canProceed && initiateDeposit()}
         disabled={!canProceed || isSubmitting}
-        className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold text-base shadow-lg shadow-indigo-200 hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100 disabled:shadow-none flex items-center justify-center gap-2"
+        className="app-button-primary w-full py-4 text-base font-bold disabled:scale-100 disabled:shadow-none"
       >
         {isSubmitting ? (
           <>
@@ -340,7 +340,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       <button
         type="button"
         onClick={handleClose}
-        className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-200 hover:shadow-xl transition-all"
+        className="app-button-primary w-full py-3.5 font-bold"
       >
         Done
       </button>
@@ -363,14 +363,14 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         <button
           type="button"
           onClick={handleClose}
-          className="flex-1 py-3 border-2 border-gray-200 text-gray-700 rounded-2xl font-semibold hover:bg-gray-50 transition-colors"
+          className="app-button-secondary flex-1 py-3"
         >
           Cancel
         </button>
         <button
           type="button"
           onClick={() => { reset(); setCustomAmount(''); setPhoneDisplay(''); setPhoneError(null); }}
-          className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-semibold shadow-md shadow-indigo-200 hover:shadow-lg transition-all flex items-center justify-center gap-2"
+          className="app-button-primary flex-1 py-3"
         >
           <RefreshCw className="w-4 h-4" />
           Try Again
@@ -395,14 +395,14 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         <button
           type="button"
           onClick={handleClose}
-          className="flex-1 py-3 border-2 border-gray-200 text-gray-700 rounded-2xl font-semibold hover:bg-gray-50 transition-colors"
+          className="app-button-secondary flex-1 py-3"
         >
           Cancel
         </button>
         <button
           type="button"
           onClick={() => { reset(); setCustomAmount(''); setPhoneDisplay(''); setPhoneError(null); }}
-          className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-semibold shadow-md shadow-indigo-200 hover:shadow-lg transition-all flex items-center justify-center gap-2"
+          className="app-button-primary flex-1 py-3"
         >
           <RefreshCw className="w-4 h-4" />
           Try Again
@@ -421,7 +421,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
           {/* Backdrop */}
           <motion.div
             key="backdrop"
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+            className="fixed inset-0 z-50 bg-slate-950/55 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -438,7 +438,8 @@ export const DepositModal: React.FC<DepositModalProps> = ({
             exit={{ opacity: 0, y: 40 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
           >
-            <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+            <div className="app-modal-panel">
+              <div className="app-modal-accent" />
               {/* Header */}
               <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
                 <div className="flex items-center gap-3">

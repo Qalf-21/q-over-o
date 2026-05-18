@@ -25,6 +25,7 @@ export const ReportFilters: React.FC<ReportFiltersProps> = ({
   const update = (patch: ReportFilter) => onChange({ ...filters, ...patch });
   const classes = fieldClass(variant);
   const labelColor = variant === 'admin' ? 'text-slate-400' : 'text-gray-500';
+  const isAdmin = variant === 'admin';
 
   return (
     <details className={variant === 'admin' ? 'rounded-2xl border border-white/10 bg-white/[0.06] p-4' : 'rounded-2xl border border-gray-100 bg-white p-4 shadow-sm'} open>
@@ -42,34 +43,44 @@ export const ReportFilters: React.FC<ReportFiltersProps> = ({
           <input className={classes} type="date" value={filters.endDate || ''} onChange={(event) => update({ endDate: event.target.value || undefined })} />
         </label>
         <label className="space-y-1">
-          <span className={`text-xs font-medium ${labelColor}`}>Status</span>
+          <span className={`text-xs font-medium ${labelColor}`}>Session status</span>
           <select className={classes} value={filters.status || ''} onChange={(event) => update({ status: event.target.value || undefined })}>
-            <option value="">Any status</option>
+            <option value="">All session statuses</option>
             <option value="completed">Completed</option>
             <option value="confirmed">Confirmed</option>
+            <option value="in-progress">In progress</option>
             <option value="pending">Pending</option>
             <option value="cancelled">Cancelled</option>
+            <option value="declined">Declined</option>
           </select>
         </label>
-        <label className="space-y-1">
-          <span className={`text-xs font-medium ${labelColor}`}>Subject ID</span>
-          <input className={classes} value={filters.subject || ''} placeholder="Subject" onChange={(event) => update({ subject: event.target.value || undefined })} />
-        </label>
-        <label className="space-y-1">
-          <span className={`text-xs font-medium ${labelColor}`}>Tutor ID</span>
-          <input className={classes} value={filters.tutorId || ''} placeholder="Tutor" onChange={(event) => update({ tutorId: event.target.value || undefined })} />
-        </label>
-        <label className="space-y-1">
-          <span className={`text-xs font-medium ${labelColor}`}>Student ID</span>
-          <input className={classes} value={filters.tuteeId || ''} placeholder="Student" onChange={(event) => update({ tuteeId: event.target.value || undefined })} />
-        </label>
-        <label className="space-y-1">
-          <span className={`text-xs font-medium ${labelColor}`}>Transaction type</span>
-          <input className={classes} value={filters.transactionType || ''} placeholder="credit, debit, escrow" onChange={(event) => update({ transactionType: event.target.value || undefined })} />
-        </label>
+        {isAdmin && (
+          <>
+            <label className="space-y-1">
+              <span className={`text-xs font-medium ${labelColor}`}>Subject ID</span>
+              <input className={classes} value={filters.subject || ''} placeholder="Subject ID" onChange={(event) => update({ subject: event.target.value || undefined })} />
+            </label>
+            <label className="space-y-1">
+              <span className={`text-xs font-medium ${labelColor}`}>Tutor ID</span>
+              <input className={classes} value={filters.tutorId || ''} placeholder="Tutor ID" onChange={(event) => update({ tutorId: event.target.value || undefined })} />
+            </label>
+            <label className="space-y-1">
+              <span className={`text-xs font-medium ${labelColor}`}>Student ID</span>
+              <input className={classes} value={filters.tuteeId || ''} placeholder="Student ID" onChange={(event) => update({ tuteeId: event.target.value || undefined })} />
+            </label>
+            <label className="space-y-1">
+              <span className={`text-xs font-medium ${labelColor}`}>Transaction type</span>
+              <input className={classes} value={filters.transactionType || ''} placeholder="credit, debit, escrow" onChange={(event) => update({ transactionType: event.target.value || undefined })} />
+            </label>
+          </>
+        )}
         <label className="space-y-1">
           <span className={`text-xs font-medium ${labelColor}`}>Payment status</span>
-          <input className={classes} value={filters.paymentStatus || ''} placeholder="completed, failed" onChange={(event) => update({ paymentStatus: event.target.value || undefined })} />
+          <select className={classes} value={filters.paymentStatus || ''} onChange={(event) => update({ paymentStatus: event.target.value || undefined })}>
+            <option value="">All payment statuses</option>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+          </select>
         </label>
         <label className="space-y-1">
           <span className={`text-xs font-medium ${labelColor}`}>Rating at/below</span>

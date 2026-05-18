@@ -17,6 +17,9 @@ const cellValue = <T extends ReportRow>(row: T, column: ReportColumn<T>) => {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'number') return value.toLocaleString();
   if (typeof value === 'string' && /\d{4}-\d{2}-\d{2}T/.test(value)) return new Date(value).toLocaleString();
+  if (typeof value === 'string' && (column.key.toLowerCase().includes('status') || column.label.toLowerCase().includes('status'))) {
+    return value.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+  }
   return value === undefined || value === null || value === '' ? '-' : String(value);
 };
 

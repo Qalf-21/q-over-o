@@ -109,14 +109,16 @@ export const Overview: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="app-page">
       {/* Welcome Section */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Welcome back, {user?.firstName || 'Tutor'}!</h1>
-        <p className="text-gray-600 mt-1">Here's what's happening with your tutoring</p>
+      <div className="app-page-header">
+        <div>
+          <h1 className="app-page-title">Welcome back, {user?.firstName || 'Tutor'}</h1>
+          <p className="app-page-subtitle">Track tutoring activity, qualification progress, upcoming sessions, and wallet balance.</p>
+        </div>
         <Link
           to="/dashboard/reports/performance"
-          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
+          className="app-button-primary"
         >
           <BarChart3 className="h-4 w-4" />
           Performance Reports
@@ -124,7 +126,7 @@ export const Overview: React.FC = () => {
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+        <div className="app-alert-error">{error}</div>
       )}
 
       {isLoading ? (
@@ -144,7 +146,7 @@ export const Overview: React.FC = () => {
 
       {/* Stats Grid */}
       {qualification && !qualification.qualified && (
-        <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5">
+        <div className="app-soft-panel">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
               <h2 className="text-lg font-bold text-gray-900">Paid tutoring progress</h2>
@@ -187,8 +189,8 @@ export const Overview: React.FC = () => {
       </div>
 
       {/* Upcoming Sessions */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
+      <div className="app-card p-5">
+        <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900">Upcoming Sessions</h2>
           <a href="/dashboard/sessions" className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
             View all →
@@ -212,16 +214,16 @@ export const Overview: React.FC = () => {
       )}
 
       {/* Quick Actions */}
-      <div className="bg-indigo-50 rounded-2xl p-6">
+      <div className="app-soft-panel">
         <h3 className="font-semibold text-gray-900 mb-3">Quick Actions</h3>
         <div className="flex flex-wrap gap-3">
-          <a href="/dashboard/availability" className="px-4 py-2 bg-white text-indigo-600 font-medium rounded-lg shadow-sm hover:shadow-md transition-all">
+          <a href="/dashboard/availability" className="app-button-secondary">
             Update Availability
           </a>
-          <a href="/dashboard/earnings" className="px-4 py-2 bg-white text-indigo-600 font-medium rounded-lg shadow-sm hover:shadow-md transition-all">
+          <a href="/dashboard/earnings" className="app-button-secondary">
             Withdraw Earnings
           </a>
-          <a href="/dashboard/profile" className="px-4 py-2 bg-white text-indigo-600 font-medium rounded-lg shadow-sm hover:shadow-md transition-all">
+          <a href="/dashboard/profile" className="app-button-secondary">
             Edit Profile
           </a>
         </div>

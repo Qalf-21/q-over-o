@@ -104,17 +104,16 @@ export const MySessions: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">My Sessions</h1>
-        <p className="text-gray-600 mt-1">Track and manage your tutoring appointments</p>
+    <div className="app-page">
+      <div className="app-page-header">
+        <div>
+          <h1 className="app-page-title">My Sessions</h1>
+          <p className="app-page-subtitle">Track booking status, join live sessions, cancel requests, and leave reviews.</p>
+        </div>
+        <span className="app-badge bg-slate-100 text-slate-600">{filteredSessions.length} sessions</span>
       </div>
 
-      <div className="flex items-center gap-2 text-sm text-gray-500">
-        <span>{filteredSessions.length} sessions</span>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+      <div className="app-panel flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
           <Filter className="w-4 h-4" />
           Filters
@@ -126,8 +125,8 @@ export const MySessions: React.FC = () => {
               onClick={() => setActiveFilter(filter.value)}
               className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
                 activeFilter === filter.value
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'bg-white text-gray-600 border border-gray-200 hover:border-indigo-300'
+                  ? 'app-filter-chip-active'
+                  : 'app-filter-chip'
               }`}
             >
               {filter.label}
@@ -142,14 +141,14 @@ export const MySessions: React.FC = () => {
             placeholder="Search sessions..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+            className="app-input pl-10"
           />
         </div>
       </div>
 
       {/* Sessions List */}
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+        <div className="app-alert-error">{error}</div>
       )}
 
       {isLoading ? (
@@ -162,7 +161,7 @@ export const MySessions: React.FC = () => {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-center py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-300"
+            className="app-empty-state"
           >
             <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900">No sessions found</h3>
@@ -177,7 +176,7 @@ export const MySessions: React.FC = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm"
+                className="app-card app-card-hover p-6"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
@@ -203,7 +202,7 @@ export const MySessions: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${getStatusColor(session.status)}`}>
+                    <span className={`app-badge capitalize ${getStatusColor(session.status)}`}>
                       {session.status.replace('-', ' ')}
                     </span>
                     <span className="font-bold text-indigo-600">{session.tokenAmount} tokens</span>
@@ -215,7 +214,7 @@ export const MySessions: React.FC = () => {
                   {canJoinSession(session) && (
                     <button
                       onClick={() => handleJoinSession(session)}
-                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-medium hover:shadow-md transition-all"
+                      className="app-button-primary px-4 py-2"
                     >
                       <Video className="w-4 h-4" />
                       Join Session
@@ -225,7 +224,7 @@ export const MySessions: React.FC = () => {
                   {session.status === 'completed' && !session.hasReviewed && (
                     <button
                       onClick={() => setReviewSession(session)}
-                      className="flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 rounded-lg font-medium hover:bg-amber-200 transition-colors"
+                      className="inline-flex items-center gap-2 rounded-xl bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-200"
                     >
                       <Star className="w-4 h-4" />
                       Leave Review
@@ -242,7 +241,7 @@ export const MySessions: React.FC = () => {
                   {['pending', 'confirmed'].includes(session.status) && (
                     <button
                       onClick={() => handleCancel(session.id)}
-                      className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-lg font-medium hover:bg-red-100 transition-colors"
+                      className="app-button-danger px-4 py-2"
                     >
                       <XCircle className="w-4 h-4" />
                       Cancel

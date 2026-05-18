@@ -8,10 +8,10 @@ export const reportColumns = {
     text('subject', 'Subject'),
     text('sessionDate', 'Session date', true, 'start_time'),
     text('durationHours', 'Hours', true, 'start_time'),
-    text('tokensSpent', 'Tokens', true, 'token_amount'),
+    text('tokensSpent', 'Tokens', true, 'cost_tokens'),
     text('reviewSubmitted', 'Reviewed'),
     text('outcome', 'Outcome', false),
-    text('status', 'Status'),
+    text('status', 'Session status'),
   ],
   tuteeWallet: [
     text('reference', 'Reference'),
@@ -21,7 +21,7 @@ export const reportColumns = {
     text('paymentChannel', 'Channel'),
     text('escrowMovement', 'Escrow'),
     text('type', 'Type'),
-    text('status', 'Status'),
+    text('status', 'Payment status'),
   ],
   tutorEarnings: [
     text('reference', 'Reference'),
@@ -50,7 +50,7 @@ export const reportColumns = {
     text('amountKes', 'KES'),
     text('balanceAfter', 'Balance after'),
     text('type', 'Type'),
-    text('status', 'Status'),
+    text('status', 'Payment status'),
     text('transactionDate', 'Date', true, 'created_at'),
   ],
   adminSessions: [
@@ -59,9 +59,9 @@ export const reportColumns = {
     text('subject', 'Subject'),
     text('sessionDate', 'Date', true, 'start_time'),
     text('durationHours', 'Hours', true, 'start_time'),
-    text('tokens', 'Tokens', true, 'token_amount'),
-    text('status', 'Status'),
-    text('paymentStatus', 'Payment'),
+    text('tokens', 'Tokens', true, 'cost_tokens'),
+    text('status', 'Session status'),
+    text('paymentStatus', 'Payment status'),
   ],
   adminUsers: [
     text('user', 'User'),
