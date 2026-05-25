@@ -173,6 +173,10 @@ async function markProcessing(paymentIntentId, correlationId) {
     .eq('id', paymentIntentId)
     .single();
 
+  if (current?.status === 'processing') {
+    return;
+  }
+
   assertTransition(current?.status, 'processing');
 
   const { error } = await supabase
@@ -262,6 +266,28 @@ async function completePaymentAtomic({
       'Atomic wallet credit RPC failed',
     );
     throw new AppError(`Atomic payment completion failed: ${rpcError.message}`, 500, 'ATOMIC_CREDIT_FAILED');
+  }
+
+  const { error: intentRepairError } = await supabase
+    .from('payment_intents')
+    .update({
+      status: 'completed',
+      mpesa_receipt_number: mpesaReceiptNumber,
+      result_code: String(resultCode),
+      result_description: resultDescription,
+      callback_payload: callbackPayload,
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', paymentIntentId)
+    .neq('status', 'completed');
+
+  if (intentRepairError) {
+    logger.error(
+      { event: 'payment_intent_completion_repair_failed', intentRepairError, paymentIntentId, correlationId },
+      'Wallet was credited but payment intent status could not be confirmed as completed',
+    );
+    throw new AppError(`Payment intent completion failed: ${intentRepairError.message}`, 500, 'INTENT_UPDATE_FAILED');
   }
 
   auditWallet({

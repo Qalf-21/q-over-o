@@ -145,6 +145,7 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
   // Viewing own profile → never show book button
   const isSelf = currentUserId === tutorId;
   const showBook = !!onBook && !isSelf && !!tutor;
+  const canBook = !!tutor && tutor.isAvailable && tutor.hasBookableSlots !== false;
 
   const initial =
     tutor?.name
@@ -376,13 +377,15 @@ export const TutorProfileModal: React.FC<TutorProfileModalProps> = ({
 {showBook && (
   <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-gray-50/50">
     <button
-      onClick={() => { onBook!(tutor!); onClose(); }}
-      disabled={!tutor!.isAvailable}
+      onClick={() => { if (canBook) { onBook!(tutor!); onClose(); } }}
+      disabled={!canBook}
       className="app-button-primary w-full py-3.5 disabled:from-slate-400 disabled:to-slate-500 disabled:shadow-none"
     >
-      {tutor!.isAvailable
+      {canBook
         ? `Book a Session with ${tutor!.name.split(' ')[0]}`
-        : `${tutor!.name.split(' ')[0]} is Currently Unavailable`}
+        : tutor!.isAvailable
+          ? 'No Bookable Slots Right Now'
+          : `${tutor!.name.split(' ')[0]} is Currently Unavailable`}
     </button>
   </div>
 )}

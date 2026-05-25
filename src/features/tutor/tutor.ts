@@ -94,6 +94,7 @@ export interface TutorSearchResult {
   totalReviews: number;
   totalSessions: number;
   isAvailable: boolean;
+  hasBookableSlots?: boolean;
   nextAvailable?: string;
 }
 

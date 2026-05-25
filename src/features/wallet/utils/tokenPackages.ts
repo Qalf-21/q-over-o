@@ -50,5 +50,5 @@ export const MIN_DEPOSIT_KES = 1;
 export const MAX_DEPOSIT_KES = 70000;
 
 /** Polling config */
-export const POLL_INTERVAL_MS  = 2500;   // 2.5 s
-export const POLL_TIMEOUT_MS   = 90000;  // 90 s — STK expires in ~75 s
+export const POLL_INTERVAL_MS  = 4000;
+export const POLL_TIMEOUT_MS   = 60000;

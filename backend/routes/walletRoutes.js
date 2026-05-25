@@ -14,6 +14,7 @@
  *   GET  /api/wallet/transactions             → paginated ledger
  *   POST /api/wallet/purchase                 → initiate STK Push
  *   GET  /api/wallet/purchase/:intentId/status → poll payment status
+ *   GET  /api/wallet/purchase/checkout/:checkoutRequestId/status → callback-driven status
  *   GET  /api/wallet/spending                 → spending summary
  *   POST /api/wallet/withdraw                 → tutor withdrawal
  */
@@ -35,6 +36,7 @@ const {
   getTransactions,
   purchaseTokens,
   getPurchaseStatus,
+  getPurchaseStatusByCheckoutRequestId,
   handleMpesaCallback,
   handleB2CResult,
   handleB2CTimeout,
@@ -63,6 +65,7 @@ router.get('/spending',   walletReadLimiter, getSpending);
 router.post('/purchase',  stkPushLimiter, stkPushBurstLimiter, purchaseTokens);
 
 // Poll payment status
+router.get('/purchase/checkout/:checkoutRequestId/status', walletReadLimiter, getPurchaseStatusByCheckoutRequestId);
 router.get('/purchase/:intentId/status', walletReadLimiter, getPurchaseStatus);
 
 // Withdrawal — tutor-only, stricter rate limit

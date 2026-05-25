@@ -65,6 +65,13 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
 
   useAutoRefresh(() => loadBalance(true), { enabled: showWallet, intervalMs: 15_000 });
 
+  const markNotificationReadLocally = useCallback((notificationId: string) => {
+    setUnreadCount(count => Math.max(0, count - 1));
+    setNotifications(items =>
+      items.map(item => item.id === notificationId ? { ...item, read: true } : item),
+    );
+  }, []);
+
   const applyNotifications = useCallback((items: AppNotification[], nextUnreadCount: number) => {
     const nextIds = new Set(items.map(notification => notification.id));
     if (hasLoadedNotifications.current && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -78,6 +85,10 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           });
           browserNotification.onclick = () => {
             window.focus();
+            if (!notification.read) {
+              notificationApi.markRead(notification.id).catch(() => undefined);
+              markNotificationReadLocally(notification.id);
+            }
             if (notification.linkUrl) navigate(notification.linkUrl);
             browserNotification.close();
           };
@@ -87,7 +98,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
     hasLoadedNotifications.current = true;
     setNotifications(items);
     setUnreadCount(nextUnreadCount);
-  }, [navigate]);
+  }, [markNotificationReadLocally, navigate]);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -117,11 +128,15 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
 
     const source = new EventSource(streamUrl);
     source.addEventListener('notifications', (event) => {
-      const payload = JSON.parse((event as MessageEvent).data) as {
-        notifications?: AppNotification[];
-        unreadCount?: number;
-      };
-      applyNotifications(payload.notifications || [], payload.unreadCount || 0);
+      try {
+        const payload = JSON.parse((event as MessageEvent).data) as {
+          notifications?: AppNotification[];
+          unreadCount?: number;
+        };
+        applyNotifications(payload.notifications || [], payload.unreadCount || 0);
+      } catch {
+        // Ignore malformed SSE payloads; polling remains the fallback.
+      }
     });
     source.onerror = () => {
       source.close();
@@ -132,10 +147,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   const handleNotificationClick = async (notification: AppNotification) => {
     if (!notification.read) {
       await notificationApi.markRead(notification.id).catch(() => undefined);
-      setUnreadCount(count => Math.max(0, count - 1));
-      setNotifications(items =>
-        items.map(item => item.id === notification.id ? { ...item, read: true } : item),
-      );
+      markNotificationReadLocally(notification.id);
     }
     setIsNotificationsOpen(false);
     if (notification.linkUrl) {

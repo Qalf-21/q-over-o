@@ -35,18 +35,24 @@ const loadNotificationsForUser = async (userId) => {
       .limit(30),
   ];
 
+  const byId = new Map();
   for (const query of queries) {
     const { data, error } = await query;
     if (!error) {
-      const notifications = (data || []).map(normalizeNotification);
-      return {
-        notifications,
-        unreadCount: notifications.filter(notification => !notification.read).length,
-      };
+      (data || []).forEach(notification => {
+        if (notification?.id) byId.set(notification.id, normalizeNotification(notification));
+      });
     }
   }
 
-  return { notifications: [], unreadCount: 0 };
+  const notifications = Array.from(byId.values())
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 30);
+
+  return {
+    notifications,
+    unreadCount: notifications.filter(notification => !notification.read).length,
+  };
 };
 
 exports.streamNotifications = asyncHandler(async (req, res) => {
@@ -98,17 +104,19 @@ exports.markNotificationRead = asyncHandler(async (req, res) => {
       .from('notifications')
       .update({ is_read: true })
       .eq('id', id)
-      .eq('user_id', userId),
+      .eq('user_id', userId)
+      .select('id'),
     supabase
       .from('notifications')
       .update({ read: true })
       .eq('id', id)
-      .eq('recipient_id', userId),
+      .eq('recipient_id', userId)
+      .select('id'),
   ];
 
   for (const update of updates) {
-    const { error } = await update;
-    if (!error) return res.json({ success: true });
+    const { data, error } = await update;
+    if (!error && data?.length) return res.json({ success: true });
   }
 
   res.json({ success: true });

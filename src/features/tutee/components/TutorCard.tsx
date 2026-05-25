@@ -19,6 +19,10 @@ interface TutorCardProps {
 
 export const TutorCard: React.FC<TutorCardProps> = ({ tutor, onViewProfile, onBook }) => {
   const isPaymentLocked = tutor.qualification ? !tutor.qualification.qualified : tutor.hourlyRate <= 0;
+  const canBook = tutor.isAvailable && tutor.hasBookableSlots !== false;
+  const unavailableReason = !tutor.isAvailable
+    ? 'This tutor is currently unavailable'
+    : 'This tutor has no bookable time slots right now';
 
   return (
     <motion.div
@@ -95,11 +99,11 @@ export const TutorCard: React.FC<TutorCardProps> = ({ tutor, onViewProfile, onBo
             View Profile
           </button>
           <button
-            onClick={() => tutor.isAvailable && onBook(tutor)}
-            disabled={!tutor.isAvailable}
-            title={!tutor.isAvailable ? 'This tutor is currently unavailable' : undefined}
+            onClick={() => canBook && onBook(tutor)}
+            disabled={!canBook}
+            title={!canBook ? unavailableReason : undefined}
             className={`inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
-              tutor.isAvailable
+              canBook
                 ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-sm hover:from-indigo-700 hover:to-purple-700 hover:shadow-md'
                 : 'cursor-not-allowed bg-slate-100 text-slate-400'
             }`}

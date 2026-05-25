@@ -151,7 +151,7 @@ exports.getPurchaseStatus = asyncHandler(async (req, res) => {
 
   const { data: intent, error } = await supabase
     .from('payment_intents')
-    .select('id, status, tokens_expected, mpesa_receipt_number, checkout_request_id, created_at, updated_at, result_description')
+    .select('id, status, tokens_expected, mpesa_receipt_number, checkout_request_id, created_at, updated_at, completed_at, result_description')
     .eq('id', intentId)
     .eq('user_id', userId)
     .single();
@@ -176,6 +176,67 @@ exports.getPurchaseStatus = asyncHandler(async (req, res) => {
   }
 
   res.json({ success: true, data: currentIntent });
+});
+
+// ── Poll payment status by CheckoutRequestID ─────────────────────────────────
+// This endpoint returns the stored payment intent and opportunistically runs
+// the same bounded Daraja reconciliation used by intent-id polling while the
+// payment is still pending or processing.
+
+exports.getPurchaseStatusByCheckoutRequestId = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const { checkoutRequestId } = req.params;
+
+  if (!checkoutRequestId) {
+    throw new AppError('CheckoutRequestID is required', 400, 'MISSING_CHECKOUT_REQUEST_ID');
+  }
+
+  const { data: intent, error } = await supabase
+    .from('payment_intents')
+    .select('id, status, tokens_expected, mpesa_receipt_number, checkout_request_id, created_at, updated_at, completed_at, result_description')
+    .eq('checkout_request_id', checkoutRequestId)
+    .eq('user_id', userId)
+    .single();
+
+  if (error || !intent) {
+    throw new AppError('Payment intent not found', 404, 'NOT_FOUND');
+  }
+
+  let currentIntent = intent;
+  if (['pending', 'processing'].includes(intent.status)) {
+    try {
+      currentIntent = await paymentService.reconcilePendingIntent(
+        intent,
+        req.correlationId || uuidv4(),
+      );
+    } catch (reconcileError) {
+      logger.warn(
+        { event: 'checkout_payment_status_reconcile_failed', checkoutRequestId, err: reconcileError.message },
+        'Checkout payment status reconciliation failed; returning stored status',
+      );
+    }
+  }
+
+  const status = (
+    ['pending', 'processing'].includes(currentIntent.status) &&
+    (currentIntent.mpesa_receipt_number || currentIntent.completed_at)
+  )
+    ? 'completed'
+    : currentIntent.status;
+
+  res.json({
+    success: true,
+    data: {
+      id: currentIntent.id,
+      status,
+      tokens_expected: currentIntent.tokens_expected,
+      mpesa_receipt_number: currentIntent.mpesa_receipt_number,
+      checkout_request_id: currentIntent.checkout_request_id,
+      result_description: currentIntent.result_description,
+      created_at: currentIntent.created_at,
+      updated_at: currentIntent.updated_at,
+    },
+  });
 });
 
 // ── M-Pesa Callback Handler ───────────────────────────────────────────────────

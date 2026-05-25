@@ -36,6 +36,9 @@ export interface InitiatePaymentResponse {
   paymentIntentId: string;
   checkoutRequestId: string;
   message: string;
+  tokensExpected?: number;
+  customerMessage?: string;
+  correlationId?: string;
 }
 
 // ── Payment Status Polling ────────────────────────────────────────────────────
@@ -45,6 +48,8 @@ export interface PaymentStatusResponse {
   status: PaymentIntentStatus;
   tokensExpected: number;
   mpesaReceiptNumber?: string;
+  checkoutRequestId?: string;
+  resultDescription?: string;
   updatedAt: string;
 }
 
@@ -118,6 +123,7 @@ export interface UseDepositReturn {
   amountKes: number;
   phone: string;
   paymentIntentId: string | null;
+  checkoutRequestId: string | null;
   tokensToReceive: number;
   isSubmitting: boolean;
   error: string | null;
@@ -140,5 +146,6 @@ export interface UsePaymentPollingReturn {
   receipt: string | null;
   tokensAdded: number | null;
   isPolling: boolean;
+  error: string | null;
   stopPolling: () => void;
 }

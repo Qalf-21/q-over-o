@@ -23,6 +23,7 @@ export function useDeposit(
   const [amountKes,       setAmountKes]       = useState(0);
   const [phone,           setPhone]           = useState('');
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
+  const [checkoutRequestId, setCheckoutRequestId] = useState<string | null>(null);
   const [isSubmitting,    setIsSubmitting]    = useState(false);
   const [error,           setError]           = useState<string | null>(null);
 
@@ -36,6 +37,7 @@ export function useDeposit(
     setAmountKes(0);
     setPhone('');
     setPaymentIntentId(null);
+    setCheckoutRequestId(null);
     setIsSubmitting(false);
     setError(null);
     submittingRef.current = false;
@@ -64,7 +66,11 @@ export function useDeposit(
 
     try {
       const { data } = await walletApi.initiateDeposit(amountKes, raw);
+      if (!data.paymentIntentId || !data.checkoutRequestId) {
+        throw new Error('Payment request was accepted but the server response was incomplete. Please try again.');
+      }
       setPaymentIntentId(data.paymentIntentId);
+      setCheckoutRequestId(data.checkoutRequestId);
       setStep('pending');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Payment initiation failed. Please try again.';
@@ -96,6 +102,7 @@ export function useDeposit(
     amountKes,
     phone,
     paymentIntentId,
+    checkoutRequestId,
     tokensToReceive,
     isSubmitting,
     error,

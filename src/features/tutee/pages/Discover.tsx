@@ -44,7 +44,7 @@ export const Discover: React.FC = () => {
           // Client-side safety net: enforce availableNow filter locally
           // so unavailable tutors never slip through even if backend misfires.
           if (filters.availableNow) {
-            filtered = filtered.filter(t => t.isAvailable === true);
+            filtered = filtered.filter(t => t.isAvailable === true && t.hasBookableSlots !== false);
           }
           setTutors(filtered);
         } else {

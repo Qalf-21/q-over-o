@@ -13,6 +13,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   X, Calendar, Clock, CreditCard, AlertCircle, CheckCircle2,
   Loader2, BookOpen, Lock,
@@ -145,6 +146,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [bookingError, setBookingError] = useState<string | null>(null);
 
   const overlayRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Load availability — safe because tutorId is null when tutor is null
   useEffect(() => {
@@ -257,6 +260,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const handleDurationChange = (mins: number) => {
     if (!selectedSlot || !durationOptions.includes(mins)) return;
     setDuration(mins);
+  };
+
+  const handleViewSessions = () => {
+    onClose();
+    navigate(location.pathname.startsWith('/dashboard/learn') ? '/dashboard/learn/sessions' : '/dashboard/my-sessions');
   };
 
   const handleConfirm = async () => {
@@ -656,7 +664,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
             {step === 'success' && (
               <button
-                onClick={onClose}
+                onClick={handleViewSessions}
                 className="app-button-primary w-full py-3"
               >
                 View My Sessions

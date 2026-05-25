@@ -262,7 +262,8 @@ exports.searchTutors = asyncHandler(async (req, res) => {
           const qualification = await getTutorQualificationStatus(t.user_id);
           const hasBookableSlots = await hasCurrentBookableAvailability(t.user_id, nowDate);
 
-          if (availableNow === 'true' && !hasBookableSlots) return null;
+          const isAvailable = t.is_available === true;
+          if (availableNow === 'true' && (!isAvailable || !hasBookableSlots)) return null;
 
           return {
             id:           t.user_id,
@@ -274,8 +275,9 @@ exports.searchTutors = asyncHandler(async (req, res) => {
             listedHourlyRate: t.hourly_rate_tokens,
             rating:       qualification.averageRating,
             totalReviews: t.total_reviews,
-            isAvailable:  t.is_available,
+            isAvailable,
             isVerified:   t.is_verified,
+            hasBookableSlots,
             qualification,
             subjects:     (t.subjects || []).map(s => ({
               id:   s.subjects.id,
@@ -285,6 +287,7 @@ exports.searchTutors = asyncHandler(async (req, res) => {
           };
         } catch (err) {
           console.error(`[searchTutors] Error processing tutor ${t.user_id}:`, err.message);
+          if (availableNow === 'true') return null;
           // Return a minimal record rather than crashing the whole list
           return {
             id:           t.user_id,
@@ -296,7 +299,7 @@ exports.searchTutors = asyncHandler(async (req, res) => {
             listedHourlyRate: t.hourly_rate_tokens,
             rating:       t.rating_avg || 0,
             totalReviews: t.total_reviews || 0,
-            isAvailable:  t.is_available,
+            isAvailable:  false,
             isVerified:   t.is_verified,
             qualification: { qualified: false, state: 'NOT_QUALIFIED', progressPercentage: 0 },
             subjects:     (t.subjects || []).map(s => ({
@@ -339,7 +342,10 @@ exports.getTutorById = asyncHandler(async (req, res) => {
   if (error || !tutor) throw new AppError('Tutor not found', 404);
 
   const qualification = await getTutorQualificationStatus(tutor.user_id);
-  const hasBookableSlots = await hasCurrentBookableAvailability(tutor.user_id, nowDate);
+  const isAvailable = tutor.is_available === true;
+  const hasBookableSlots = isAvailable
+    ? await hasCurrentBookableAvailability(tutor.user_id, nowDate)
+    : false;
 
   res.json({
     success: true,
@@ -353,7 +359,7 @@ exports.getTutorById = asyncHandler(async (req, res) => {
       listedHourlyRate: tutor.hourly_rate_tokens,
       rating:       qualification.averageRating,
       totalReviews: tutor.total_reviews,
-      isAvailable:  tutor.is_available,
+      isAvailable,
       isVerified:   tutor.is_verified,
       hasBookableSlots,
       qualification,
@@ -388,6 +394,17 @@ exports.getTutorReviews = asyncHandler(async (req, res) => {
 exports.getTutorAvailability = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const nowDate = new Date();
+
+  const { data: tutor, error: tutorError } = await supabase
+    .from('tutor_profiles')
+    .select('is_available')
+    .eq('user_id', id)
+    .maybeSingle();
+
+  if (tutorError) throw new AppError('Failed to fetch tutor availability', 500);
+  if (!tutor?.is_available) {
+    return res.json({ success: true, data: [] });
+  }
 
   const { data: slots, error } = await supabase
     .from('availability_slots')

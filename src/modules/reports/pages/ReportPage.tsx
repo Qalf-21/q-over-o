@@ -36,6 +36,7 @@ export const ReportPage = <T extends ReportRow>({ type, columns, role, variant =
         onChange={report.setDraftFilters}
         onApply={report.applyFilters}
         onReset={report.resetFilters}
+        reportType={type}
         variant={variant}
       />
 

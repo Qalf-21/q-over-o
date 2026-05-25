@@ -14,6 +14,7 @@ const supabase = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
 const { getTutorQualificationStatus } = require('../services/tutorQualificationService');
 const { signJaasJwt } = require('../services/jaasService');
+const { createUserNotification } = require('../services/notificationService');
 const { parseUtcDate, toUtcISOString } = require('../utils/dateTime');
 
 const displayName = (profile) => [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
@@ -214,25 +215,7 @@ const getSessionMeetingLink = (session, now = new Date()) => {
 };
 
 const notifyUser = async ({ userId, type, title, message, linkUrl, data = {} }) => {
-  if (!userId) return;
-
-  const base = {
-    type,
-    title,
-    message,
-    data,
-  };
-
-  const payloads = [
-    { ...base, user_id: userId, link_url: linkUrl, is_read: false },
-    { ...base, user_id: userId, link: linkUrl, is_read: false },
-    { ...base, recipient_id: userId, link_url: linkUrl, read: false },
-  ];
-
-  for (const payload of payloads) {
-    const { error } = await supabase.from('notifications').insert(payload);
-    if (!error) return;
-  }
+  await createUserNotification({ userId, type, title, message, linkUrl, data });
 };
 
 const expireOverdueSessions = async (userId = null) => {
@@ -353,6 +336,20 @@ exports.bookSession = asyncHandler(async (req, res) => {
   // ── Self-booking guard ──────────────────────────────────────────────────────
   if (req.user.id === tutor_id) {
     throw new AppError('You cannot book a session with yourself', 400);
+  }
+
+  const { data: tutorProfile, error: tutorProfileError } = await supabase
+    .from('tutor_profiles')
+    .select('is_available')
+    .eq('user_id', tutor_id)
+    .maybeSingle();
+
+  if (tutorProfileError) {
+    throw new AppError('Failed to validate tutor availability', 500);
+  }
+
+  if (!tutorProfile?.is_available) {
+    throw new AppError('This tutor is currently unavailable', 409, 'TUTOR_UNAVAILABLE');
   }
 
   const resolvedSubjectId = await resolveBookingSubjectId(tutor_id, requestedSubjectId);

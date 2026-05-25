@@ -52,8 +52,34 @@ type RawPaymentStatus = {
   tokens_expected?: number;
   mpesaReceiptNumber?: string;
   mpesa_receipt_number?: string;
+  checkoutRequestId?: string;
+  checkout_request_id?: string;
+  resultDescription?: string;
+  result_description?: string;
   updatedAt?: string;
   updated_at?: string;
+};
+
+const normalizePaymentStatus = (
+  status?: string,
+): PaymentStatusResponse['status'] => {
+  const normalized = String(status || 'pending').toLowerCase();
+  if (['completed', 'complete', 'success', 'successful', 'paid', 'confirmed'].includes(normalized)) {
+    return 'completed';
+  }
+  if (['failed', 'failure', 'declined', 'rejected', 'error'].includes(normalized)) {
+    return 'failed';
+  }
+  if (['cancelled', 'canceled', 'cancel'].includes(normalized)) {
+    return 'cancelled';
+  }
+  if (['timeout', 'timed_out', 'expired'].includes(normalized)) {
+    return 'timeout';
+  }
+  if (normalized === 'processing') {
+    return normalized;
+  }
+  return 'pending';
 };
 
 const normalizeTransaction = (t: RawTransaction): WalletTransaction => ({
@@ -130,9 +156,38 @@ export const walletApi = {
       success: response.success,
       data: {
         id: raw.id || paymentIntentId,
-        status: raw.status || 'pending',
+        status: normalizePaymentStatus(raw.status),
         tokensExpected: raw.tokensExpected ?? raw.tokens_expected ?? 0,
         mpesaReceiptNumber: raw.mpesaReceiptNumber ?? raw.mpesa_receipt_number,
+        checkoutRequestId: raw.checkoutRequestId ?? raw.checkout_request_id,
+        resultDescription: raw.resultDescription ?? raw.result_description,
+        updatedAt: raw.updatedAt ?? raw.updated_at ?? '',
+      },
+    };
+  },
+
+  /**
+   * Poll the stored payment intent status using Daraja's CheckoutRequestID.
+   * This remains authenticated and the backend verifies the intent belongs to
+   * the current user before returning anything.
+   */
+  async getPaymentStatusByCheckoutRequestId(
+    checkoutRequestId: string,
+  ): Promise<{ success: boolean; data: PaymentStatusResponse }> {
+    const response = await apiRequest<RawPaymentStatus>(
+      `/wallet/purchase/checkout/${encodeURIComponent(checkoutRequestId)}/status`,
+      { method: 'GET' },
+    );
+    const raw = response.data || {};
+    return {
+      success: response.success,
+      data: {
+        id: raw.id || '',
+        status: normalizePaymentStatus(raw.status),
+        tokensExpected: raw.tokensExpected ?? raw.tokens_expected ?? 0,
+        mpesaReceiptNumber: raw.mpesaReceiptNumber ?? raw.mpesa_receipt_number,
+        checkoutRequestId: raw.checkoutRequestId ?? raw.checkout_request_id ?? checkoutRequestId,
+        resultDescription: raw.resultDescription ?? raw.result_description,
         updatedAt: raw.updatedAt ?? raw.updated_at ?? '',
       },
     };

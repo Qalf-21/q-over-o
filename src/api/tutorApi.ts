@@ -40,6 +40,8 @@ type RawTutor = {
   total_sessions?: number;
   isAvailable?: boolean;
   is_available?: boolean;
+  hasBookableSlots?: boolean;
+  has_bookable_slots?: boolean;
   nextAvailable?: string;
   next_available?: string;
   qualification?: TutorSearchResult['qualification'];
@@ -70,6 +72,7 @@ export const normalizeTutor = (tutor: RawTutor): TutorSearchResult => ({
   totalReviews:  tutor.totalReviews ?? tutor.total_reviews ?? 0,
   totalSessions: tutor.totalSessions ?? tutor.total_sessions ?? 0,
   isAvailable:   tutor.isAvailable ?? tutor.is_available ?? false,
+  hasBookableSlots: tutor.hasBookableSlots ?? tutor.has_bookable_slots,
   nextAvailable: tutor.nextAvailable ?? tutor.next_available,
   qualification: tutor.qualification
 });

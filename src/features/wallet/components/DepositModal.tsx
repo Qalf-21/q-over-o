@@ -75,7 +75,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   const [customAmount, setCustomAmount] = useState('');
 
   const {
-    step, amountKes, phone, paymentIntentId,
+    step, amountKes, phone, checkoutRequestId,
     tokensToReceive, isSubmitting, error,
     setAmountKes, setPhone, initiateDeposit,
     handlePollComplete, reset,
@@ -84,8 +84,8 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   };
 
   // ── Polling ───────────────────────────────────────────────────────────────
-  const { receipt, tokensAdded } = usePaymentPolling(
-    step === 'pending' ? paymentIntentId : null,
+  const { receipt, tokensAdded, error: pollingError } = usePaymentPolling(
+    step === 'pending' ? checkoutRequestId : null,
     handlePollComplete,
   );
 
@@ -292,9 +292,16 @@ export const DepositModal: React.FC<DepositModalProps> = ({
           Waiting for confirmation…
         </div>
         <p className="text-xs text-amber-600 mt-1.5 text-center">
-          This prompt expires in about 75 seconds
+          This request will time out after 60 seconds if no confirmation arrives
         </p>
       </div>
+
+      {pollingError && (
+        <div className="app-alert-error p-3.5 text-left">
+          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>{pollingError}</span>
+        </div>
+      )}
 
       <div className="text-xs text-gray-400 space-y-1">
         <p>Do NOT close this window while payment is processing.</p>
@@ -388,7 +395,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       <div>
         <h3 className="text-xl font-bold text-gray-900">Request Timed Out</h3>
         <p className="text-gray-500 text-sm mt-2">
-          The M-Pesa prompt expired. You have not been charged.
+          We did not receive payment confirmation within 60 seconds. If you completed the PIN prompt, refresh your wallet before trying again.
         </p>
       </div>
       <div className="flex gap-3">
