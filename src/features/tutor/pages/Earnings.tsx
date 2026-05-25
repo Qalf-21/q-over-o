@@ -12,6 +12,7 @@ import { tokensToKes } from '../../wallet/utils/tokenPackages';
 export const Earnings: React.FC = () => {
   const [showWithdrawForm, setShowWithdrawForm] = useState(false);
   const [availableBalance, setAvailableBalance] = useState(0);
+  const [pendingEscrow, setPendingEscrow] = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +23,7 @@ export const Earnings: React.FC = () => {
       setError(null);
       const response = await walletApi.getWallet();
       setAvailableBalance(response.data.balance);
+      setPendingEscrow(response.data.escrowIncoming || 0);
       setTransactions(response.data.transactions || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load earnings');
@@ -36,13 +38,12 @@ export const Earnings: React.FC = () => {
 
   useAutoRefresh(() => loadEarnings(true), { intervalMs: 30_000 });
 
+  const incomeTypes = new Set<Transaction['type']>(['credit', 'release']);
   const totalEarned = transactions
-    .filter(transaction => transaction.type === 'credit' && transaction.status === 'completed')
+    .filter(transaction => incomeTypes.has(transaction.type) && transaction.status === 'completed')
     .reduce((sum, transaction) => sum + transaction.amount, 0);
 
-  const pendingBalance = transactions
-    .filter(transaction => transaction.type === 'credit' && transaction.status === 'pending')
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const pendingBalance = pendingEscrow;
 
   const handleWithdraw = async (amountTokens: number, phoneNumber: string) => {
     await walletApi.withdraw(amountTokens, phoneNumber);
@@ -147,9 +148,9 @@ export const Earnings: React.FC = () => {
             >
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                  transaction.type === 'credit' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                  incomeTypes.has(transaction.type) ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
                 }`}>
-                  {transaction.type === 'credit' ? <ArrowDownRight className="w-5 h-5" /> : <ArrowUpRight className="w-5 h-5" />}
+                  {incomeTypes.has(transaction.type) ? <ArrowDownRight className="w-5 h-5" /> : <ArrowUpRight className="w-5 h-5" />}
                 </div>
                 <div>
                   <p className="font-medium text-gray-900">{transaction.description}</p>
@@ -165,9 +166,9 @@ export const Earnings: React.FC = () => {
                 </div>
               </div>
               <div className={`font-bold ${
-                transaction.type === 'credit' ? 'text-green-600' : 'text-red-600'
+                incomeTypes.has(transaction.type) ? 'text-green-600' : 'text-red-600'
               }`}>
-                {transaction.type === 'credit' ? '+' : '-'}{transaction.amount}
+                {incomeTypes.has(transaction.type) ? '+' : '-'}{transaction.amount}
               </div>
             </div>
           ))}

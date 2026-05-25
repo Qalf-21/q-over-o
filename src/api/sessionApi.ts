@@ -38,8 +38,14 @@ const minutesBetween = (start?: string, end?: string) => {
 const asString = (value: unknown): string | undefined =>
   typeof value === 'string' ? value : undefined;
 
-const asNumber = (value: unknown): number | undefined =>
-  typeof value === 'number' ? value : undefined;
+const asNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+};
 
 const asRecord = (value: unknown): RawSession | undefined =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as RawSession : undefined;
@@ -58,7 +64,12 @@ const durationMinutes = (session: RawSession) => {
 };
 
 const tokenAmount = (session: RawSession) =>
-  asNumber(session.tokenAmount) ?? asNumber(session.token_amount) ?? asNumber(session.amount_tokens) ?? asNumber(session.cost_tokens) ?? 0;
+  asNumber(session.tokenAmount)
+    ?? asNumber(session.token_amount)
+    ?? asNumber(session.amount_tokens)
+    ?? asNumber(session.cost_tokens)
+    ?? asNumber(session.escrow_amount_tokens)
+    ?? 0;
 
 const subjectName = (session: RawSession) => {
   const subjects = asRecord(session.subjects);

@@ -26,8 +26,9 @@ class TutorService {
   async getEarnings(): Promise<{ success: boolean; data: Earnings }> {
     const wallet = await walletApi.getWallet();
     const transactions: Transaction[] = wallet.data.transactions || [];
+    const incomeTypes = new Set<Transaction['type']>(['credit', 'release']);
     const totalEarned = transactions
-      .filter(transaction => transaction.type === 'credit' && transaction.status === 'completed')
+      .filter(transaction => incomeTypes.has(transaction.type) && transaction.status === 'completed')
       .reduce((sum, transaction) => sum + transaction.amount, 0);
 
     return {
@@ -35,7 +36,7 @@ class TutorService {
       data: {
         totalEarned,
         availableBalance: wallet.data.balance,
-        pendingBalance: 0,
+        pendingBalance: wallet.data.escrowIncoming || 0,
         lifetimeSessions: transactions.filter(transaction => transaction.sessionId).length,
         transactions
       }

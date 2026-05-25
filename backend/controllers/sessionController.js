@@ -13,6 +13,7 @@
 const supabase = require('../config/supabase');
 const { AppError, asyncHandler } = require('../utils/errorHandler');
 const { getTutorQualificationStatus } = require('../services/tutorQualificationService');
+const escrowService = require('../services/escrowService');
 const { signJaasJwt } = require('../services/jaasService');
 const { createUserNotification } = require('../services/notificationService');
 const { parseUtcDate, toUtcISOString } = require('../utils/dateTime');
@@ -96,7 +97,8 @@ const trimAvailabilitySlot = async (tutorId, slotId, sessionStart, sessionEnd) =
   }
 };
 
-const createFreeSession = async ({ tuteeId, tutorId, subjectId, startTime, endTime }) => {
+const createSession = async ({ tuteeId, tutorId, subjectId, startTime, endTime, tokenAmount }) => {
+  const paymentStatus = tokenAmount > 0 ? 'pending_escrow' : 'completed';
   const basePayload = {
     tutee_id: tuteeId,
     tutor_id: tutorId,
@@ -107,12 +109,12 @@ const createFreeSession = async ({ tuteeId, tutorId, subjectId, startTime, endTi
   };
 
   const payloads = [
-    { ...basePayload, cost_tokens: 0, payment_status: 'completed' },
-    { ...basePayload, cost_tokens: 0 },
-    { ...basePayload, token_amount: 0, payment_status: 'completed' },
-    { ...basePayload, token_amount: 0 },
-    { ...basePayload, amount_tokens: 0, payment_status: 'completed' },
-    { ...basePayload, amount_tokens: 0 },
+    { ...basePayload, cost_tokens: tokenAmount, payment_status: paymentStatus },
+    { ...basePayload, cost_tokens: tokenAmount },
+    { ...basePayload, token_amount: tokenAmount, payment_status: paymentStatus },
+    { ...basePayload, token_amount: tokenAmount },
+    { ...basePayload, amount_tokens: tokenAmount, payment_status: paymentStatus },
+    { ...basePayload, amount_tokens: tokenAmount },
     basePayload,
   ];
 
@@ -130,7 +132,7 @@ const createFreeSession = async ({ tuteeId, tutorId, subjectId, startTime, endTi
   }
 
   if (error || !session) {
-    throw new AppError(`Free session booking failed: ${error?.message || 'unknown error'}`, 500, 'FREE_BOOKING_FAILED');
+    throw new AppError(`Session booking failed: ${error?.message || 'unknown error'}`, 500, 'SESSION_BOOKING_FAILED');
   }
 
   const meetingLink = `/session/${session.id}/join`;
@@ -146,6 +148,24 @@ const createFreeSession = async ({ tuteeId, tutorId, subjectId, startTime, endTi
   }
 
   return session.id;
+};
+
+const cleanupFailedBooking = async (sessionId) => {
+  if (!sessionId) return;
+
+  const deleted = await supabase.from('sessions').delete().eq('id', sessionId);
+  if (!deleted.error) return;
+
+  const payloads = [
+    { status: 'cancelled', payment_status: 'failed', updated_at: new Date().toISOString() },
+    { status: 'cancelled', payment_status: 'failed' },
+    { status: 'cancelled' },
+  ];
+
+  for (const payload of payloads) {
+    const { error } = await supabase.from('sessions').update(payload).eq('id', sessionId);
+    if (!error) return;
+  }
 };
 
 const updateSessionTopic = async (sessionId, topic) => {
@@ -236,10 +256,32 @@ const expireOverdueSessions = async (userId = null) => {
 
   if (!expiredSessions?.length) return;
 
-  await supabase
-    .from('sessions')
-    .update({ status: 'cancelled' })
-    .in('id', expiredSessions.map(session => session.id));
+  for (const session of expiredSessions) {
+    const { data: escrow } = await supabase
+      .from('escrow')
+      .select('amount_tokens, status')
+      .eq('session_id', session.id)
+      .maybeSingle();
+
+    if (escrow?.status === 'locked' && Number(escrow.amount_tokens || 0) > 0) {
+      try {
+        await escrowService.refundSessionEscrow({
+          sessionId: session.id,
+          actorId: userId,
+          targetStatus: 'cancelled',
+          correlationId: `session_expiry:${session.id}`,
+        });
+        continue;
+      } catch (err) {
+        console.error('[expireOverdueSessions] escrow refund failed:', session.id, err?.message ?? err);
+      }
+    }
+
+    await supabase
+      .from('sessions')
+      .update({ status: 'cancelled' })
+      .eq('id', session.id);
+  }
 };
 
 exports.expireOverdueSessions = expireOverdueSessions;
@@ -340,7 +382,7 @@ exports.bookSession = asyncHandler(async (req, res) => {
 
   const { data: tutorProfile, error: tutorProfileError } = await supabase
     .from('tutor_profiles')
-    .select('is_available')
+    .select('is_available, hourly_rate_tokens')
     .eq('user_id', tutor_id)
     .maybeSingle();
 
@@ -450,16 +492,32 @@ exports.bookSession = asyncHandler(async (req, res) => {
   }
 
   const qualification = await getTutorQualificationStatus(tutor_id);
+  const hourlyRate = Number(tutorProfile.hourly_rate_tokens || 0);
+  const paymentLocked = !qualification.qualified || hourlyRate <= 0;
+  const tokenAmount = paymentLocked
+    ? 0
+    : Math.max(1, Math.round(hourlyRate * (durationMs / (60 * 60 * 1000))));
   const normalizedStartTime = toUtcISOString(requestedStart);
   const normalizedEndTime = toUtcISOString(requestedEnd);
+  const correlationId = req.correlationId || `session:${req.user.id}:${Date.now()}`;
 
-  const sessionId = await createFreeSession({
+  const sessionId = await createSession({
     tuteeId: req.user.id,
     tutorId: tutor_id,
     subjectId: resolvedSubjectId,
     startTime: normalizedStartTime,
     endTime: normalizedEndTime,
+    tokenAmount,
   });
+
+  try {
+    if (tokenAmount > 0) {
+      await escrowService.lockTokens(sessionId, req.user.id, tutor_id, tokenAmount, correlationId);
+    }
+  } catch (err) {
+    await cleanupFailedBooking(sessionId);
+    throw err;
+  }
 
   await updateSessionTopic(sessionId, topic ?? notes);
 
@@ -487,9 +545,9 @@ exports.bookSession = asyncHandler(async (req, res) => {
     session_id: sessionId,
     data: {
       sessionId,
-      paymentLocked: false,
-      tokenAmount: 0,
-      escrowAmount: 0,
+      paymentLocked,
+      tokenAmount,
+      escrowAmount: tokenAmount,
       qualification,
     },
   });
@@ -515,6 +573,15 @@ exports.getSessions = asyncHandler(async (req, res) => {
 
   if (error) throw new AppError('Failed to fetch sessions', 500);
 
+  const sessionIds = (sessions || []).map(session => session.id).filter(Boolean);
+  const { data: escrowRows } = sessionIds.length
+    ? await supabase
+      .from('escrow')
+      .select('session_id, amount_tokens, status')
+      .in('session_id', sessionIds)
+    : { data: [] };
+  const escrowBySession = new Map((escrowRows || []).map(row => [row.session_id, row]));
+
   const enriched = await Promise.all((sessions || []).map(async (session) => {
     const otherUserId = isTutorMode ? session.tutee_id : session.tutor_id;
     const { data: profile } = await supabase
@@ -536,12 +603,19 @@ exports.getSessions = asyncHandler(async (req, res) => {
       review = existingReview || null;
     }
 
+    const escrow = escrowBySession.get(session.id);
+    const tokenAmount = session.token_amount ?? session.amount_tokens ?? session.cost_tokens ?? escrow?.amount_tokens ?? 0;
+
     return {
       ...session,
       subject: session.subjects?.name,
       otherPartyName: displayName(profile) || 'Unknown',
       meeting_url: getSessionMeetingLink(session),
-      token_amount: session.token_amount ?? session.amount_tokens ?? session.cost_tokens ?? 0,
+      token_amount: tokenAmount,
+      amount_tokens: session.amount_tokens ?? tokenAmount,
+      cost_tokens: session.cost_tokens ?? tokenAmount,
+      escrow_status: escrow?.status,
+      escrow_amount_tokens: escrow?.amount_tokens ?? 0,
       has_reviewed: Boolean(review),
       review
     };
@@ -574,23 +648,12 @@ exports.completeSession = asyncHandler(async (req, res) => {
 
   if (escrow?.amount_tokens > 0 && escrow.status === 'locked') {
     const tutorShare = Math.floor(Number(escrow.amount_tokens) * TUTOR_EARNINGS_SHARE);
-    let { error } = await supabase.rpc('release_escrow_on_completion', {
-      p_session_id: id,
-      p_actor_id: req.user.id,
-      p_tutor_share: tutorShare,
+    await escrowService.releaseSessionEscrow({
+      sessionId: id,
+      actorId: req.user.id,
+      tutorShare,
+      correlationId: req.correlationId || `session_complete:${id}`,
     });
-
-    if (error?.message?.includes('function') || error?.message?.includes('p_tutor_share')) {
-      const fallback = await supabase.rpc('release_escrow_on_completion', {
-        p_session_id: id,
-        p_actor_id: req.user.id,
-      });
-      error = fallback.error;
-    }
-
-    if (error) {
-      throw new AppError(error.message, 400);
-    }
   } else {
     await updateSessionStatus(id, 'completed');
   }
@@ -615,7 +678,22 @@ exports.acceptSession = asyncHandler(async (req, res) => {
   }
 
   if (parseUtcDate(session.end_time).getTime() + SESSION_EXPIRY_GRACE_MINUTES * 60 * 1000 < Date.now()) {
-    await updateSessionStatus(id, 'cancelled');
+    const { data: escrow } = await supabase
+      .from('escrow')
+      .select('amount_tokens, status')
+      .eq('session_id', id)
+      .maybeSingle();
+
+    if (escrow?.amount_tokens > 0 && escrow.status === 'locked') {
+      await escrowService.refundSessionEscrow({
+        sessionId: id,
+        actorId: req.user.id,
+        targetStatus: 'cancelled',
+        correlationId: req.correlationId || `session_expired_accept:${id}`,
+      });
+    } else {
+      await updateSessionStatus(id, 'cancelled');
+    }
     throw new AppError('This session has expired and was cancelled automatically', 409);
   }
 
@@ -646,7 +724,22 @@ exports.declineSession = asyncHandler(async (req, res) => {
     throw new AppError('Only pending sessions can be declined', 409);
   }
 
-  await updateSessionStatus(id, 'declined');
+  const { data: escrow } = await supabase
+    .from('escrow')
+    .select('amount_tokens, status')
+    .eq('session_id', id)
+    .maybeSingle();
+
+  if (escrow?.amount_tokens > 0 && escrow.status === 'locked') {
+    await escrowService.refundSessionEscrow({
+      sessionId: id,
+      actorId: req.user.id,
+      targetStatus: 'declined',
+      correlationId: req.correlationId || `session_decline:${id}`,
+    });
+  } else {
+    await updateSessionStatus(id, 'declined');
+  }
 
   await notifyUser({
     userId: session.tutee_id,
@@ -702,14 +795,12 @@ exports.cancelSession = asyncHandler(async (req, res) => {
     .maybeSingle();
 
   if (escrow?.amount_tokens > 0 && escrow.status === 'locked') {
-    const { error } = await supabase.rpc('refund_escrow_on_cancellation', {
-      p_session_id: id,
-      p_actor_id: req.user.id
+    await escrowService.refundSessionEscrow({
+      sessionId: id,
+      actorId: req.user.id,
+      targetStatus: 'cancelled',
+      correlationId: req.correlationId || `session_cancel:${id}`,
     });
-
-    if (error) {
-      throw new AppError(error.message, 400);
-    }
   } else {
     await updateSessionStatus(id, 'cancelled');
   }

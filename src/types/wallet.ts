@@ -68,7 +68,9 @@ export interface TokenPackage {
 
 export interface WalletData {
   balance: number;             // current spendable tokens
-  escrowBalance: number;       // tokens locked in escrow
+  escrowBalance: number;       // all locked escrow involving this user
+  escrowIncoming: number;      // locked session payments owed to this tutor
+  escrowOutgoing: number;      // locked session payments paid by this learner
   totalDeposited: number;      // lifetime tokens deposited
   totalSpent: number;          // lifetime tokens spent
   transactions: WalletTransaction[];

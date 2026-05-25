@@ -38,8 +38,13 @@ type RawWallet = {
   balance_tokens?: number;
   escrowBalance?: number;
   escrow_balance?: number;
+  escrowIncoming?: number;
+  escrow_incoming?: number;
+  escrowOutgoing?: number;
+  escrow_outgoing?: number;
   totalDeposited?: number;
   total_deposited?: number;
+  total_deposited_kes?: number;
   totalSpent?: number;
   total_spent?: number;
   transactions?: RawTransaction[];
@@ -96,7 +101,9 @@ const normalizeTransaction = (t: RawTransaction): WalletTransaction => ({
 const normalizeWallet = (w: RawWallet): WalletData => ({
   balance:        w.balance       ?? w.balance_tokens         ?? 0,
   escrowBalance:  w.escrowBalance ?? w.escrow_balance         ?? 0,
-  totalDeposited: w.totalDeposited ?? w.total_deposited       ?? 0,
+  escrowIncoming: w.escrowIncoming ?? w.escrow_incoming       ?? 0,
+  escrowOutgoing: w.escrowOutgoing ?? w.escrow_outgoing       ?? 0,
+  totalDeposited: w.totalDeposited ?? w.total_deposited ?? ((w.total_deposited_kes ?? 0) * 10),
   totalSpent:     w.totalSpent    ?? w.total_spent            ?? 0,
   transactions:   (w.transactions || []).map(normalizeTransaction),
 });

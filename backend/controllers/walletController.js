@@ -27,7 +27,7 @@ async function getOrCreateWallet(userId) {
   // Try to fetch first (fast path for existing users)
   const { data: existing, error: fetchError } = await supabase
     .from('wallets')
-    .select('balance_tokens, updated_at')
+    .select('balance_tokens, total_deposited_kes, updated_at')
     .eq('user_id', userId)
     .single();
 
@@ -42,7 +42,7 @@ async function getOrCreateWallet(userId) {
   const { data: created, error: createError } = await supabase
     .from('wallets')
     .insert({ user_id: userId, balance_tokens: 0 })
-    .select('balance_tokens, updated_at')
+    .select('balance_tokens, total_deposited_kes, updated_at')
     .single();
 
   if (createError) {
@@ -50,7 +50,7 @@ async function getOrCreateWallet(userId) {
     // try one more fetch before giving up.
     const { data: raceWallet } = await supabase
       .from('wallets')
-      .select('balance_tokens, updated_at')
+      .select('balance_tokens, total_deposited_kes, updated_at')
       .eq('user_id', userId)
       .single();
 
@@ -69,19 +69,53 @@ exports.getBalance = asyncHandler(async (req, res) => {
 
   const wallet = await getOrCreateWallet(userId);
 
-  const { data: transactions } = await supabase
-    .from('transactions')
-    .select('id, type, amount_tokens, balance_after, status, reference, description, session_id, created_at')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(20);
+  const [{ data: transactions }, { data: escrowRows }, { data: spendingRows }] = await Promise.all([
+    supabase
+      .from('transactions')
+      .select('id, type, amount_tokens, balance_after, status, reference, description, session_id, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(20),
+    supabase
+      .from('escrow')
+      .select('amount_tokens, payer_id, payee_id, status')
+      .or(`payer_id.eq.${userId},payee_id.eq.${userId}`),
+    supabase
+      .from('transactions')
+      .select('type, amount_tokens')
+      .eq('user_id', userId)
+      .in('type', ['escrow', 'debit', 'withdrawal']),
+  ]);
+
+  const allTransactions = transactions || [];
+  const lockedEscrowRows = (escrowRows || []).filter(row => row.status === 'locked');
+  const escrowIncoming = lockedEscrowRows
+    .filter(row => row.payee_id === userId)
+    .reduce((sum, row) => sum + Number(row.amount_tokens || 0), 0);
+  const escrowOutgoing = lockedEscrowRows
+    .filter(row => row.payer_id === userId)
+    .reduce((sum, row) => sum + Number(row.amount_tokens || 0), 0);
+  const escrowBalance = escrowIncoming + escrowOutgoing;
+  const totalSpent = (spendingRows || [])
+    .reduce((sum, tx) => sum + Math.abs(Number(tx.amount_tokens || 0)), 0);
 
   res.json({
     success: true,
     data: {
       balance:      wallet.balance_tokens,
+      balance_tokens: wallet.balance_tokens,
+      escrowBalance,
+      escrow_balance: escrowBalance,
+      escrowIncoming,
+      escrow_incoming: escrowIncoming,
+      escrowOutgoing,
+      escrow_outgoing: escrowOutgoing,
+      totalDeposited: Number(wallet.total_deposited_kes || 0) * TOKENS_PER_KES,
+      total_deposited: Number(wallet.total_deposited_kes || 0) * TOKENS_PER_KES,
+      totalSpent,
+      total_spent: totalSpent,
       updatedAt:    wallet.updated_at,
-      transactions: transactions || [],
+      transactions: allTransactions,
     },
   });
 });
